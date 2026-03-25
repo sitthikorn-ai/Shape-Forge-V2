@@ -806,6 +806,13 @@ module VBO::ShapeForge
 			juncs
 		end
 
+		def normalize_plane(plane)
+			while plane.is_a?(Array) && plane.length == 1 && plane[0].is_a?(Array)
+				plane = plane[0]
+			end
+			plane
+		end
+
 		def profile_points_at_junctions
 			junctions = self.get_attribute("junctions")
 			junctions = get_junctions_continuous if junctions.nil?
@@ -1290,7 +1297,7 @@ module VBO::ShapeForge
 								pm.chain[0],
 								[
 									pm.chain[0],
-									planes[i-1].flatten(1)[1].transform(trans)
+									normalize_plane(planes[i-1])[1].transform(trans)
 								]
 							]
 						)
@@ -1301,7 +1308,7 @@ module VBO::ShapeForge
 								pm.chain[1],
 								[
 									pm.chain[1],
-									planes[i].flatten(1)[1].transform(trans)
+									normalize_plane(planes[i])[1].transform(trans)
 								]
 							]
 						)
@@ -1489,7 +1496,7 @@ module VBO::ShapeForge
 								pm.chain[0],
 								[
 									pm.chain[0],
-									planes[i-1].flatten(1)[1].transform(trans)
+									normalize_plane(planes[i-1])[1].transform(trans)
 								]
 							]
 						)
@@ -1500,7 +1507,7 @@ module VBO::ShapeForge
 								pm.chain[1],
 								[
 									pm.chain[1],
-									planes[i].flatten(1)[1].transform(trans)
+									normalize_plane(planes[i])[1].transform(trans)
 								]
 							]
 						)
