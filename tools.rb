@@ -1794,6 +1794,35 @@ module VBO
 				end
 			end
 
+			def align_loop_to_reference(reference_loop, target_loop)
+				return target_loop if reference_loop.nil? || target_loop.nil? || reference_loop.length != target_loop.length
+
+				candidates = [target_loop, target_loop.reverse]
+				best_loop = target_loop
+				best_score = nil
+
+				candidates.each do |candidate|
+					candidate.length.times do |offset|
+						rotated = candidate.rotate(offset)
+						score = reference_loop.each_with_index.sum { |point, index| point.distance(rotated[index]) }
+						if best_score.nil? || score < best_score
+							best_score = score
+							best_loop = rotated
+						end
+					end
+				end
+
+				best_loop
+			end
+
+			def align_section_to_reference(reference_section, target_section)
+				return target_section if reference_section.nil? || target_section.nil?
+
+				reference_section.zip(target_section).map do |reference_loop, target_loop|
+					align_loop_to_reference(reference_loop, target_loop)
+				end
+			end
+
 			def draw_preview_segment_sections(view, start_section, end_section, profile)
 				return false if start_section.nil? || end_section.nil?
 
@@ -1803,6 +1832,33 @@ module VBO
 				end
 				draw_preview_loop_section(view, end_section, profile)
 				true
+			end
+
+			def draw_straight_member_preview(view, preview_data, target_point, moving_start)
+				return false unless preview_data && preview_data[:chain].length == 2
+
+				member = preview_data[:member]
+				transformation = preview_data[:transformation]
+				profile = member.profile
+				profile.set_from_profile_member(member)
+
+				start_section = actual_cap_loops_world(member, transformation, true)
+				end_section = actual_cap_loops_world(member, transformation, false)
+				return false if start_section.nil? || end_section.nil?
+
+				if moving_start
+					source_point = member.chain.path[0].transform(transformation)
+					offset_vec = source_point.vector_to(target_point)
+					start_section = start_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
+					end_section = align_section_to_reference(start_section, end_section)
+				else
+					source_point = member.chain.path[-1].transform(transformation)
+					offset_vec = source_point.vector_to(target_point)
+					end_section = end_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
+					end_section = align_section_to_reference(start_section, end_section)
+				end
+
+				draw_preview_segment_sections(view, start_section, end_section, profile)
 			end
 
 			def draw_split_style_preview(view, preview_data, split_type)
@@ -1900,16 +1956,16 @@ module VBO
 						junction_style = member&.profile&.junction_style
 						preview_data = preview_local_chain_for_active_sub_click
 						if @sub_click == "extend"
-							if preview_data && preview_data[:chain].length == 2
-								draw_world_chain_preview(view, preview_data)
+							target_point = @pts[0].project_to_line(data[:line])
+							if preview_data && preview_data[:chain].length == 2 &&
+								draw_straight_member_preview(view, preview_data, target_point, data[:start])
 							else
-								target_point = @pts[0].project_to_line(data[:line])
 								unless target_point == @pts[1]
 									draw_translated_cap_preview(view, target_point)
 								end
 							end
-						elsif @sub_click == "moving" && preview_data && (data[:start] || preview_data[:chain].length == 2)
-							draw_world_chain_preview(view, preview_data)
+						elsif @sub_click == "moving" && preview_data && preview_data[:chain].length == 2 &&
+							draw_straight_member_preview(view, preview_data, @pts[0], data[:start])
 						else
 							if @sub_click == "append" && draw_split_style_preview(view, preview_data, junction_style)
 							elsif preview_data && preview_data[:chain].length > 1
