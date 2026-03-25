@@ -1629,10 +1629,13 @@ module VBO
 				candidate_paths = [
 					member_path,
 					@click_click_data && @click_click_data[:member_path],
-					@member_path
+					@member_path,
+					member
 				].compact
 
 				candidate_paths.each do |path|
+					path = normalize_member_path(path, member)
+					next if path.nil?
 					begin
 						return Sketchup::InstancePath.new(path).transformation
 					rescue ArgumentError, TypeError
@@ -1647,12 +1650,31 @@ module VBO
 				@pick_transformation || Geom::Transformation.new
 			end
 
+			def normalize_member_path(path, member = nil)
+				if path.is_a?(Array)
+					return path if !path.empty? && path[-1].respond_to?(:definition)
+				elsif path.respond_to?(:definition)
+					return Sketchup.active_model.active_path.to_a + [path]
+				elsif path.respond_to?(:instance)
+					instance = path.instance
+					return Sketchup.active_model.active_path.to_a + [instance] if instance && instance.respond_to?(:definition)
+				end
+
+				if member && member.respond_to?(:instance)
+					instance = member.instance
+					return Sketchup.active_model.active_path.to_a + [instance] if instance && instance.respond_to?(:definition)
+				end
+
+				nil
+			end
+
 			def preview_local_chain_for_active_sub_click
 				data = @click_click_data || {}
 				member = data[:member] || @member
 				return nil unless member
 
-				transformation = current_member_transformation(data[:member_path], member)
+				member_path = normalize_member_path(data[:member_path], member)
+				transformation = current_member_transformation(member_path, member)
 				chain = member.chain.path.map { |point| point.clone }
 
 				case @sub_click
@@ -1713,7 +1735,8 @@ module VBO
 				{
 					chain: chain,
 					member: member,
-					transformation: transformation
+					transformation: transformation,
+					member_path: member_path
 				}
 			end
 
