@@ -813,6 +813,21 @@ module VBO::ShapeForge
 			plane
 		end
 
+		def plane_normal(plane)
+			plane = normalize_plane(plane)
+			normal = plane.is_a?(Array) ? plane[1] : nil
+			case normal
+			when Geom::Vector3d
+				normal
+			when Array
+				Geom::Vector3d.new(*normal)
+			when Geom::Point3d
+				Geom::Vector3d.new(*normal.to_a)
+			else
+				Geom::Vector3d.new(0, 0, 1)
+			end
+		end
+
 		def profile_points_at_junctions
 			junctions = self.get_attribute("junctions")
 			junctions = get_junctions_continuous if junctions.nil?
@@ -1133,8 +1148,7 @@ module VBO::ShapeForge
 			junctions = get_junctions_continuous.map{|js| js.map{|l| l.map{|pt| pt.transform(trans)}}}
 			last = junctions[0]
 
-			planes = self.get_attribute("projected_planes")
-			planes = get_projected_planes if planes.nil?
+			planes = get_project_planes_continuous
 			gcs = []
 			po = Geom::PolygonMesh.new
 
@@ -1297,7 +1311,7 @@ module VBO::ShapeForge
 								pm.chain[0],
 								[
 									pm.chain[0],
-									normalize_plane(planes[i-1])[1].transform(trans)
+									plane_normal(planes[i-1]).transform(trans)
 								]
 							]
 						)
@@ -1308,7 +1322,7 @@ module VBO::ShapeForge
 								pm.chain[1],
 								[
 									pm.chain[1],
-									normalize_plane(planes[i])[1].transform(trans)
+									plane_normal(planes[i]).transform(trans)
 								]
 							]
 						)
@@ -1390,8 +1404,7 @@ module VBO::ShapeForge
 			junctions = get_junctions_continuous.map{|js| js.map{|l| l.map{|pt| pt.transform(trans)}}}
 			last = junctions[0]
 
-			planes = self.get_attribute("projected_planes")
-			planes = get_projected_planes if planes.nil?
+			planes = get_project_planes_continuous
 			gcs = []
 
 			unless make_group
@@ -1496,7 +1509,7 @@ module VBO::ShapeForge
 								pm.chain[0],
 								[
 									pm.chain[0],
-									normalize_plane(planes[i-1])[1].transform(trans)
+									plane_normal(planes[i-1]).transform(trans)
 								]
 							]
 						)
@@ -1507,7 +1520,7 @@ module VBO::ShapeForge
 								pm.chain[1],
 								[
 									pm.chain[1],
-									normalize_plane(planes[i])[1].transform(trans)
+									plane_normal(planes[i]).transform(trans)
 								]
 							]
 						)
