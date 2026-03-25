@@ -1803,19 +1803,10 @@ module VBO
 						else
 							preview_data = preview_local_chain_for_active_sub_click
 							if preview_data && preview_data[:chain].length > 1
-							profile = preview_data[:member].profile
-							profile.set_from_profile_member(preview_data[:member])
-							preview_world_chain = preview_data[:chain].map { |pt| pt.transform(preview_data[:transformation]) }
-							preview_vector = preview_world_chain[0].vector_to(preview_world_chain[1])
-							preview_transformation =
-								if preview_world_chain.length == 2 && preview_vector.parallel?(Z_AXIS)
-									VBO::ShapeForge::ForgeElement.default_transformation(preview_world_chain)
-								else
-									preview_data[:transformation]
-								end
-
-							pm = Extruder.new(preview_world_chain, profile, preview_transformation)
-							pm.draw_view(0, -1, view, preview_transformation)
+								profile = preview_data[:member].profile
+								profile.set_from_profile_member(preview_data[:member])
+								pm = Extruder.new(preview_data[:chain], profile)
+								pm.draw_view(0, -1, view, preview_data[:transformation])
 							elsif @sub_click != "adjust"
 								target_point = @pts[0]
 								unless target_point == @pts[1]
