@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<svg width="25px" height="24px" viewBox="0 0 25 24" version="1.1" xmlns="http://www.w3.org/2000/svg">
+  <title>cursor_move</title>
+  <desc>Created with Sketch.</desc>
+  <g id="Page-1-Icons-24x24" stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+    <g id="cursor_move" transform="translate(1.000000, 0.000000)">
+      <g id="MoveIcon" transform="translate(3.000000, 4.000000)">
+        <g id="Shadow" transform="translate(0.000000, 1.000000)">
+          <path d="M6.984375,12.8384726 L11.109375,12.390625 L9.34251538,15.390625 L6.984375,12.8384726 L6.984375,12.8384726 Z" id="Fill-24910" fill-opacity="0.1216" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M6.984375,12.8385091 L11.109375,12.390625 L9.34251538,15.390625 L6.984375,12.8385091 L6.984375,12.8385091 Z" id="Stroke-24911" stroke-opacity="0.1255" stroke-width="1.875" stroke-linecap="round" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M13.5729735,9.25 L13.125,5.125 L16.125,6.89178834 L13.5729735,9.25 L13.5729735,9.25 Z" id="Fill-24914" fill-opacity="0.1216" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M13.5729735,9.25 L13.125,5.125 L16.125,6.89175806 L13.5729735,9.25 L13.5729735,9.25 Z" id="Stroke-24915" stroke-opacity="0.1255" stroke-width="1.875" stroke-linecap="round" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M9.984375,2.6615086 L5.859375,3.109375 L7.62603864,0.109375 L9.984375,2.6615086 L9.984375,2.6615086 Z" id="Fill-24918" fill-opacity="0.1216" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M9.984375,2.66148023 L5.859375,3.109375 L7.62603864,0.109375 L9.984375,2.66148023 L9.984375,2.66148023 Z" id="Stroke-24919" stroke-opacity="0.1255" stroke-width="1.875" stroke-linecap="round" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M3.5365086,6.109375 L3.984375,10.234375 L0.984375,8.46756879 L3.5365086,6.109375 L3.5365086,6.109375 Z" id="Fill-24922" fill-opacity="0.1216" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+          <path d="M3.5365086,6.109375 L3.984375,10.234375 L0.984375,8.46759196 L3.5365086,6.109375 L3.5365086,6.109375 Z" id="Stroke-24923" stroke-opacity="0.1255" stroke-width="1.875" stroke-linecap="round" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+        </g>
+        <g id="BlackLines" transform="translate(4.000000, 3.000000)" stroke="#000000" stroke-opacity="0.9882" stroke-width="1.875">
+          <path d="M3,5 L0.341064453,5" id="Stroke-24940" style="fill: rgb(102, 139, 39);"/>
+          <path d="M5,3 L5,0.437866211" id="Stroke-24947" style="fill: rgb(102, 139, 39);"/>
+          <path d="M9.65893555,5 L7,5" id="Stroke-24940" transform="translate(8.329468, 5.000000) rotate(-180.000000) translate(-8.329468, -5.000000) " style="fill: rgb(102, 139, 39);"/>
+          <path d="M5,9.56213379 L5,7" id="Stroke-24947" transform="translate(5.000000, 8.281067) rotate(-180.000000) translate(-5.000000, -8.281067) " style="fill: rgb(102, 139, 39);"/>
+        </g>
+        <path d="M9,0 L11.5,4 L10,4 L10,6 L8,6 L8,4 L6.5,4 L9,0 Z" id="Path-7969" stroke-width="0.5" style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+        <path d="M4,5 L6.5,9 L5,9 L5,11 L3,11 L3,9 L1.5,9 L4,5 Z" id="Path-7969-Copy" stroke-width="0.5" transform="translate(4.000000, 8.000000) rotate(-90.000000) translate(-4.000000, -8.000000) " style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+        <path d="M9,10 L11.5,14 L10,14 L10,16 L8,16 L8,14 L6.5,14 L9,10 Z" id="Path-7969-Copy-2" stroke-width="0.5" transform="translate(9.000000, 13.000000) rotate(-180.000000) translate(-9.000000, -13.000000) " style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+        <path d="M14,5 L16.5,9 L15,9 L15,11 L13,11 L13,9 L11.5,9 L14,5 Z" id="Path-7969-Copy-3" stroke-width="0.5" transform="translate(14.000000, 8.000000) rotate(90.000000) translate(-14.000000, -8.000000) " style="stroke: rgb(0, 0, 0); fill: rgb(102, 139, 39);"/>
+      </g>
+    </g>
+  </g>
+</svg>
