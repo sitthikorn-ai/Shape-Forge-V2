@@ -1647,33 +1647,36 @@ module VBO
 				@pick_transformation || Geom::Transformation.new
 			end
 
-			def preview_chain_for_active_sub_click
+			def preview_local_chain_for_active_sub_click
 				data = @click_click_data || {}
 				member = data[:member] || @member
 				return nil unless member
 
 				transformation = current_member_transformation(data[:member_path], member)
-				chain = member.chain.path.map { |point| point.transform(transformation) }
+				chain = member.chain.path.map { |point| point.clone }
 
 				case @sub_click
 				when "moving"
 					return nil if @pts[0] == @pts[1]
+					target_point = @pts[0].transform(transformation.inverse)
 					if data[:start]
-						chain[0] = @pts[0]
+						chain[0] = target_point
 					elsif data[:end]
-						chain[-1] = @pts[0]
+						chain[-1] = target_point
 					end
 				when "append"
 					return nil if @pts[0] == @pts[1]
+					target_point = @pts[0].transform(transformation.inverse)
 					if data[:start]
-						chain.unshift(@pts[0])
+						chain.unshift(target_point)
 					elsif data[:end]
-						chain << @pts[0]
+						chain << target_point
 					end
 				when "adjust"
 					return nil if @pts[0] == @pts[1]
 					index = @index_adjust
 					return nil if index.nil?
+					target_point = @pts[0].transform(transformation.inverse)
 
 					i, j = case index
 					when 0
@@ -1685,18 +1688,18 @@ module VBO
 					end
 
 					if [i, j] == [-2, 1]
-						chain[0] = @pts[0]
+						chain[0] = target_point
 						chain[-1] = chain[0]
 					else
-						chain[index] = @pts[0]
+						chain[index] = target_point
 					end
 
 					chain.delete_at(j) if j && chain[index] == chain[j]
 					chain.delete_at(i) if i && chain[index] == chain[i]
 				when "extend"
 					return nil if @pts[0] == @pts[1]
-					projected_point = @pts[0].project_to_line(data[:line])
-					return nil if projected_point == @pts[1]
+					projected_point = @pts[0].project_to_line(data[:line]).transform(transformation.inverse)
+					return nil if projected_point == member.chain.path[data[:start] ? 0 : -1]
 
 					if data[:start]
 						chain[0] = projected_point
@@ -1707,7 +1710,11 @@ module VBO
 					return nil
 				end
 
-				chain
+				{
+					chain: chain,
+					member: member,
+					transformation: transformation
+				}
 			end
 
 			def draw_translated_cap_preview(view, target_point)
@@ -1753,19 +1760,18 @@ module VBO
 					view.drawing_color = color
 					view.line_stipple = ""
 					case @sub_click
-					when "moving", "append", "extend"
-						target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
-						unless target_point == @pts[1]
-							draw_translated_cap_preview(view, target_point)
-						end
-					when "adjust"
-						preview_chain = preview_chain_for_active_sub_click
-						if preview_chain && preview_chain.length > 1
-							profile = data[:member].profile
-							profile.set_from_profile_member(data[:member])
-							transformation = current_member_transformation(data[:member_path], data[:member])
-							pm = Extruder.new(preview_chain, profile, transformation)
-							pm.draw_view(0, -1, view, transformation)
+					when "moving", "append", "adjust", "extend"
+						preview_data = preview_local_chain_for_active_sub_click
+						if preview_data && preview_data[:chain].length > 1
+							profile = preview_data[:member].profile
+							profile.set_from_profile_member(preview_data[:member])
+							pm = Extruder.new(preview_data[:chain], profile)
+							pm.draw_view(0, -1, view, preview_data[:transformation])
+						elsif @sub_click != "adjust"
+							target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
+							unless target_point == @pts[1]
+								draw_translated_cap_preview(view, target_point)
+							end
 						end
 					when "draw"
 						if @pts[0] != @pts[1]
