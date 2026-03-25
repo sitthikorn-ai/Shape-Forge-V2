@@ -1625,20 +1625,35 @@ module VBO
 				VBO::ShapeForge::DRAWVIEW.draw_point_2d(view, point, 3 * UI.scale_factor, @chain_color)
 			end
 
-			def current_member_transformation(member_path = @member_path)
-				return Geom::Transformation.new if member_path.nil?
+			def current_member_transformation(member_path = @member_path, member = @member)
+				candidate_paths = [
+					member_path,
+					@click_click_data && @click_click_data[:member_path],
+					@member_path
+				].compact
 
-				Sketchup::InstancePath.new(member_path).transformation
-			rescue ArgumentError
+				candidate_paths.each do |path|
+					begin
+						return Sketchup::InstancePath.new(path).transformation
+					rescue ArgumentError, TypeError
+					end
+				end
+
+				return member.transformation if member && member.respond_to?(:transformation)
+				if @click_click_data && @click_click_data[:member] && @click_click_data[:member].respond_to?(:transformation)
+					return @click_click_data[:member].transformation
+				end
+
 				@pick_transformation || Geom::Transformation.new
 			end
 
 			def preview_chain_for_active_sub_click
-				return nil unless @member
-
-				transformation = current_member_transformation
-				chain = @member.chain.path.map { |point| point.transform(transformation) }
 				data = @click_click_data || {}
+				member = data[:member] || @member
+				return nil unless member
+
+				transformation = current_member_transformation(data[:member_path], member)
+				chain = member.chain.path.map { |point| point.transform(transformation) }
 
 				case @sub_click
 				when "moving"
@@ -1662,9 +1677,9 @@ module VBO
 
 					i, j = case index
 					when 0
-						@member.closed_path? ? [-2, 1] : [-1, 1]
+						member.closed_path? ? [-2, 1] : [-1, 1]
 					when (chain.length - 1)
-						@member.closed_path? ? [-2, 1] : [-2, 0]
+						member.closed_path? ? [-2, 1] : [-2, 0]
 					else
 						[index - 1, index + 1]
 					end
@@ -1696,15 +1711,16 @@ module VBO
 			end
 
 			def draw_translated_cap_preview(view, target_point)
-				return false unless @member && @click_click_data
-
 				data = @click_click_data
-				cap_idx = data[:start] ? 0 : @member.chain.path.length - 1
-				cap_junction = @member.profile_loops_at(cap_idx)
+				member = data[:member] || @member
+				return false unless member && data
+
+				cap_idx = data[:start] ? 0 : member.chain.path.length - 1
+				cap_junction = member.profile_loops_at(cap_idx)
 				return false if cap_junction.nil? || cap_junction.empty?
 
-				transformation = current_member_transformation
-				source_point = @member.chain.path[cap_idx].transform(transformation)
+				transformation = current_member_transformation(data[:member_path], member)
+				source_point = member.chain.path[cap_idx].transform(transformation)
 				offset_vec = source_point.vector_to(target_point)
 				loops_world = cap_junction.map { |loop| loop.map { |pt| pt.transform(transformation) } }
 				moved_loops = loops_world.map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
@@ -1715,7 +1731,7 @@ module VBO
 				view.drawing_color = preview_color
 
 				loops_world.zip(moved_loops).each do |original_loop, moved_loop|
-					if @member.profile.is_2d?
+					if member.profile.is_2d?
 						view.draw(GL_LINE_LOOP, original_loop)
 						view.draw(GL_LINE_LOOP, moved_loop)
 					else
@@ -1747,7 +1763,7 @@ module VBO
 						if preview_chain && preview_chain.length > 1
 							profile = data[:member].profile
 							profile.set_from_profile_member(data[:member])
-							transformation = current_member_transformation
+							transformation = current_member_transformation(data[:member_path], data[:member])
 							pm = Extruder.new(preview_chain, profile, transformation)
 							pm.draw_view(0, -1, view, transformation)
 						end
