@@ -1717,19 +1717,53 @@ module VBO
 				}
 			end
 
+			def actual_cap_loops_world(member, transformation, start_cap)
+				return nil unless member && member.respond_to?(:entities)
+
+				chain_world = member.chain.path.map { |pt| pt.transform(transformation) }
+				return nil if chain_world.length < 2
+
+				cap_idx = start_cap ? 0 : chain_world.length - 1
+				endpoint = chain_world[cap_idx]
+				extend_vector = start_cap ? chain_world[1].vector_to(chain_world[0]) : chain_world[-2].vector_to(chain_world[-1])
+				return nil unless extend_vector.valid?
+
+				best_face = member.entities.grep(Sketchup::Face).filter_map { |face|
+					normal_world = face.normal.transform(transformation)
+					next nil unless normal_world.valid? && normal_world.parallel?(extend_vector)
+
+					plane = [face.vertices[0].position.transform(transformation), normal_world]
+					projected_point = endpoint.project_to_plane(plane)
+					plane_distance = endpoint.distance(projected_point)
+					next nil if plane_distance > 1.mm
+
+					bounds = Geom::BoundingBox.new
+					face.outer_loop.vertices.each { |vertex| bounds.add(vertex.position.transform(transformation)) }
+					[plane_distance + bounds.center.distance(endpoint), face]
+				}.min_by(&:first)
+
+				return nil unless best_face
+
+				best_face[1].loops.sort_by { |loop| loop.outer? ? 0 : 1 }.map { |loop|
+					loop.vertices.map { |vertex| vertex.position.transform(transformation) }
+				}
+			end
+
 			def draw_translated_cap_preview(view, target_point)
 				data = @click_click_data
 				member = data[:member] || @member
 				return false unless member && data
 
 				cap_idx = data[:start] ? 0 : member.chain.path.length - 1
-				cap_junction = member.profile_loops_at(cap_idx)
-				return false if cap_junction.nil? || cap_junction.empty?
-
 				transformation = current_member_transformation(data[:member_path], member)
 				source_point = member.chain.path[cap_idx].transform(transformation)
 				offset_vec = source_point.vector_to(target_point)
-				loops_world = cap_junction.map { |loop| loop.map { |pt| pt.transform(transformation) } }
+				loops_world = actual_cap_loops_world(member, transformation, data[:start])
+				if loops_world.nil? || loops_world.empty?
+					cap_junction = member.profile_loops_at(cap_idx)
+					return false if cap_junction.nil? || cap_junction.empty?
+					loops_world = cap_junction.map { |loop| loop.map { |pt| pt.transform(transformation) } }
+				end
 				moved_loops = loops_world.map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
 
 				preview_color = Sketchup::Color.new("brown")
@@ -1754,57 +1788,6 @@ module VBO
 				true
 			end
 
-			def draw_preview_sections(view, sections, profile)
-				return false if sections.nil? || sections.empty?
-
-				first_section = sections.first
-				return false if first_section.nil? || first_section.empty?
-
-				first_section.each do |loop|
-					profile.is_2d? ? view.draw(GL_LINE_LOOP, loop) : view.draw(GL_LINE_STRIP, loop)
-				end
-
-				return true if sections.length == 1
-
-				sections.each_cons(2) do |previous_section, current_section|
-					previous_section.zip(current_section).each_with_index do |loops, index|
-						if index == 0
-							view.draw(GL_LINES, loops[0].zip(loops[1]).flatten(1))
-						end
-						profile.is_2d? ? view.draw(GL_LINE_LOOP, loops[1]) : view.draw(GL_LINE_STRIP, loops[1])
-					end
-				end
-
-				true
-			end
-
-			def draw_endpoint_extend_preview(view)
-				return false unless @sub_click == "extend"
-
-				data = @click_click_data
-				member = data[:member] || @member
-				return false unless member && data && (data[:start] || data[:end])
-
-				junctions = member.junctions
-				return false unless junctions && junctions.length > 1
-
-				transformation = current_member_transformation(data[:member_path], member)
-				target_point = @pts[0].project_to_line(data[:line])
-				cap_idx = data[:start] ? 0 : junctions.length - 1
-				source_point = member.chain.path[cap_idx].transform(transformation)
-				return false if source_point == target_point
-
-				sections = junctions.map { |junction|
-					junction.map { |loop|
-						loop.map { |pt| pt.transform(transformation) }
-					}
-				}
-				offset_vec = source_point.vector_to(target_point)
-				sections[cap_idx] = sections[cap_idx].map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
-
-				draw_preview_sections(view, sections, member.profile)
-			end
-
 			def draw_profile_3d(view, color = @profile_color)
 				if @state == "click-click"
 					data = @click_click_data
@@ -1812,7 +1795,11 @@ module VBO
 					view.line_stipple = ""
 					case @sub_click
 					when "moving", "append", "adjust", "extend"
-						if draw_endpoint_extend_preview(view)
+						if @sub_click == "extend"
+							target_point = @pts[0].project_to_line(data[:line])
+							unless target_point == @pts[1]
+								draw_translated_cap_preview(view, target_point)
+							end
 						else
 							preview_data = preview_local_chain_for_active_sub_click
 							if preview_data && preview_data[:chain].length > 1
@@ -1830,7 +1817,7 @@ module VBO
 							pm = Extruder.new(preview_world_chain, profile, preview_transformation)
 							pm.draw_view(0, -1, view, preview_transformation)
 							elsif @sub_click != "adjust"
-								target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
+								target_point = @pts[0]
 								unless target_point == @pts[1]
 									draw_translated_cap_preview(view, target_point)
 								end
