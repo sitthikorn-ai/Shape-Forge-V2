@@ -340,7 +340,13 @@ module VBO::ShapeForge
 		end
 
 		def instance= (g)
-			@group = g
+			@group = g.is_a?(Array) ? g[0] : g
+		end
+
+		def group_attribute(key, default = nil)
+			inst = instance
+			return default unless inst.respond_to?(:get_attribute)
+			inst.get_attribute(@@dict, key, default)
 		end
 
 		def profile= (p)
@@ -358,7 +364,7 @@ module VBO::ShapeForge
 
 		def profile
 			return if @group.to_s.include?('Delete')
-			p_string = @su_defn.get_attribute(@@dict,'profile')|| @group.get_attribute(@@dict,'profile') || nil
+			p_string = @su_defn.get_attribute(@@dict,'profile') || group_attribute('profile')
 			if p_string
 				return Shape.new(p_string)
 			else
@@ -368,9 +374,9 @@ module VBO::ShapeForge
 		end
 
 		def material
-
-			return @group.material
-
+			inst = instance
+			return inst.material if inst.respond_to?(:material)
+			nil
 		end
 
 		def material_name= (name)
@@ -381,14 +387,15 @@ module VBO::ShapeForge
 
 		def material_name
 
-			@su_defn.get_attribute(@@dict,'material_name')||@group.get_attribute(@@dict,'material_name')||@@material_name
+			@su_defn.get_attribute(@@dict,'material_name') || group_attribute('material_name') || @@material_name
 
 		end
 
 		def layer_name
 
-			if @group.layer
-				name = @group.layer.name
+			inst = instance
+			if inst.respond_to?(:layer) && inst.layer
+				name = inst.layer.name
 			else
 				name = Sketchup.active_model.layers[0].name
 			end
@@ -397,7 +404,8 @@ module VBO::ShapeForge
 		end
 
 		def layer
-			@group.layer
+			inst = instance
+			inst.respond_to?(:layer) ? inst.layer : nil
 		end
 
 		def layer= (value)
@@ -407,7 +415,8 @@ module VBO::ShapeForge
 				la = get_layer_by_name(value)
 			end
 			if la != self.layer
-				@group.layer = la
+				inst = instance
+				inst.layer = la if inst.respond_to?(:layer=)
 			end
 		end
 		def placement_point= (pp)  #pp must be an integer between 1 and 9
@@ -418,7 +427,7 @@ module VBO::ShapeForge
 		end
 
 		def placement_point
-			@su_defn.get_attribute(@@dict,'pp')||@group.get_attribute(@@dict,'pp')||@@pp
+			@su_defn.get_attribute(@@dict,'pp') || group_attribute('pp') || @@pp
 		end
 
 		def rotation= (rot)
@@ -429,7 +438,7 @@ module VBO::ShapeForge
 		end
 
 		def rotation
-			@su_defn.get_attribute(@@dict,'rotation')||@group.get_attribute(@@dict,'rotation')||@@rot
+			@su_defn.get_attribute(@@dict,'rotation') || group_attribute('rotation') || @@rot
 		end
 
 		def rotate!(angle)
@@ -443,7 +452,7 @@ module VBO::ShapeForge
 		end
 
 		def x_offset
-			@su_defn.get_attribute(@@dict,'x_offset')||@group.get_attribute(@@dict,'x_offset')||@@x_offset
+			@su_defn.get_attribute(@@dict,'x_offset') || group_attribute('x_offset') || @@x_offset
 		end
 
 		def y_offset= (value)
@@ -452,7 +461,7 @@ module VBO::ShapeForge
 
 		def y_offset
 
-			@su_defn.get_attribute(@@dict,'y_offset')||@group.get_attribute(@@dict,'y_offset')||@@y_offset
+			@su_defn.get_attribute(@@dict,'y_offset') || group_attribute('y_offset') || @@y_offset
 
 		end
 
@@ -488,7 +497,7 @@ module VBO::ShapeForge
 		end
 
 		def smooth_angle
-			@su_defn.get_attribute(@@dict,'smooth_angle')||@group.get_attribute(@@dict,'smooth_angle')||@@smooth_angle
+			@su_defn.get_attribute(@@dict,'smooth_angle') || group_attribute('smooth_angle') || @@smooth_angle
 		end
 
 
@@ -504,7 +513,7 @@ module VBO::ShapeForge
 		end
 
 		def mirror
-			@su_defn.get_attribute(@@dict,'mirror')||@group.get_attribute(@@dict,'mirror')||@@mirror
+			@su_defn.get_attribute(@@dict,'mirror') || group_attribute('mirror') || @@mirror
 		end
 
 
@@ -519,7 +528,7 @@ module VBO::ShapeForge
 
 
 		def chain
-			pts = @su_defn.get_attribute(@@dict,'chain') || @group.get_attribute(@@dict,'chain')||@@chain
+			pts = @su_defn.get_attribute(@@dict,'chain') || group_attribute('chain') || @@chain
 			pts = JSON.parse(pts) if pts.is_a?(String)
 			pts = pts.collect {|p| Geom::Point3d.new(p)}
 			Chain.new(pts)
@@ -861,8 +870,9 @@ module VBO::ShapeForge
 			if split_type == "continuous"
 				soften_edges
 			end
-			@group = gc
-			@group
+			self.instance = gc
+			@su_defn = instance.definition if instance.respond_to?(:definition)
+			instance
 		end
 
 		def draw_view(i, j, view, trans = self.transformation)
@@ -1642,7 +1652,7 @@ module VBO::ShapeForge
 		end
 
 		def to_path(trans = Geom::Transformation.new)
-			tr = @group.transformation
+			tr = self.transformation
 			group_ents = self.entities
 			edges = group_ents.find_all {|e| e.class == Sketchup::Edge}
 			group_ents.erase_entities(edges)
@@ -2429,8 +2439,8 @@ module VBO::ShapeForge
 
 			if instances.length > 0
 				#@group = instances.length > 1 ? result.to_component : result
-				@group = result
-				@group.name = name
+				self.instance = result
+				instance.name = name if instance.respond_to?(:name=)
 				@su_defn = defn
 				@su_defn.name = defn_name
 				# instances.each {|inst|
