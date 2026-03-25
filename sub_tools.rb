@@ -157,11 +157,6 @@ module VBO
 				Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
 				trim_after_draw(data[:member])
 				@member_path[-1] = data[:member].instance if @member_path
-				begin
-					data[:member].re_coordinate(Sketchup::InstancePath.new(@member_path).transformation) if chain.length == 2
-				rescue ArgumentError
-					# instance path became invalid after draw -- skip re_coordinate
-				end
 				Sketchup.active_model.commit_operation
 				reset
 				@member_path[-1] = data[:member].instance if @member_path

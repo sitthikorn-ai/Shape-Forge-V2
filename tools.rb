@@ -1363,6 +1363,7 @@ module VBO
 						@pts = [@click_click_data[:point], @click_click_data[:point]]
 						return
 					end
+					member_path = normalize_member_path(member_path, member)
 					transformation = current_member_transformation(member_path, member)
 					chain = member.chain.path.map{|c| c.transform(transformation)}
 					case @sub_click
