@@ -1820,7 +1820,12 @@ module VBO
 
 			def profile_loops_world(member, transformation, junction_index)
 				return nil unless member
-				loops = member.profile_loops_at(junction_index)
+				loops = if member.respond_to?(:get_junctions_continuous)
+					junctions = member.get_junctions_continuous
+					junctions && junctions[junction_index]
+				else
+					member.profile_loops_at(junction_index)
+				end
 				return nil if loops.nil? || loops.empty?
 
 				loops.map { |loop| loop.map { |point| point.transform(transformation) } }
@@ -2219,9 +2224,12 @@ module VBO
 				end
 				data[:member].set_chain(chain)
 				data[:member].delete_attribute("cap_#{cap}_trim")
+				fixed_cap = cap == 0 ? 1 : 0
+				fixed_trim = data[:member].get_attribute("cap_#{fixed_cap}_trim")
 
-				draw_mode = chain.length == 2 ? "continuous" : data[:member].profile.junction_style
-				data[:member].draw(draw_mode)
+				data[:member].draw(data[:member].profile.junction_style)
+				data[:member].set_attribute("cap_#{fixed_cap}_trim", fixed_trim) if fixed_trim
+				data[:member].delete_attribute("cap_#{cap}_trim")
 				#Sketchup.active_model.commit_operation
 				#Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
 				trim_after_draw(data[:member])
