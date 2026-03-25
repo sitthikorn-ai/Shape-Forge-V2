@@ -1877,6 +1877,18 @@ module VBO
 				true
 			end
 
+			def draw_world_chain_preview(view, preview_data)
+				return false unless preview_data && preview_data[:chain].length > 1
+
+				profile = preview_data[:member].profile
+				profile.set_from_profile_member(preview_data[:member])
+				preview_world_chain = preview_data[:chain].map { |point| point.transform(preview_data[:transformation]) }
+				preview_transformation = VBO::ShapeForge::ForgeElement.default_transformation(preview_world_chain)
+				pm = Extruder.new(preview_world_chain, profile, preview_transformation)
+				pm.draw_view(0, -1, view, preview_transformation)
+				true
+			end
+
 			def draw_profile_3d(view, color = @profile_color)
 				if @state == "click-click"
 					data = @click_click_data
@@ -1886,13 +1898,19 @@ module VBO
 					when "moving", "append", "adjust", "extend"
 						member = data[:member] || @member
 						junction_style = member&.profile&.junction_style
+						preview_data = preview_local_chain_for_active_sub_click
 						if @sub_click == "extend"
-							target_point = @pts[0].project_to_line(data[:line])
-							unless target_point == @pts[1]
-								draw_translated_cap_preview(view, target_point)
+							if preview_data && preview_data[:chain].length == 2
+								draw_world_chain_preview(view, preview_data)
+							else
+								target_point = @pts[0].project_to_line(data[:line])
+								unless target_point == @pts[1]
+									draw_translated_cap_preview(view, target_point)
+								end
 							end
+						elsif @sub_click == "moving" && preview_data && (data[:start] || preview_data[:chain].length == 2)
+							draw_world_chain_preview(view, preview_data)
 						else
-							preview_data = preview_local_chain_for_active_sub_click
 							if @sub_click == "append" && draw_split_style_preview(view, preview_data, junction_style)
 							elsif preview_data && preview_data[:chain].length > 1
 								profile = preview_data[:member].profile
