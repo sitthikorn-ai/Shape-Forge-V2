@@ -1695,13 +1695,54 @@ module VBO
 				chain
 			end
 
+			def draw_translated_cap_preview(view, target_point)
+				return false unless @member && @click_click_data
+
+				data = @click_click_data
+				cap_idx = data[:start] ? 0 : @member.chain.path.length - 1
+				cap_junction = @member.profile_loops_at(cap_idx)
+				return false if cap_junction.nil? || cap_junction.empty?
+
+				transformation = current_member_transformation
+				source_point = data[:point]
+				offset_vec = source_point.vector_to(target_point)
+				loops_world = cap_junction.map { |loop| loop.map { |pt| pt.transform(transformation) } }
+				moved_loops = loops_world.map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
+
+				preview_color = Sketchup::Color.new("brown")
+				preview_color.alpha = 200
+				view.line_width = 1
+				view.drawing_color = preview_color
+
+				loops_world.zip(moved_loops).each do |original_loop, moved_loop|
+					if @member.profile.is_2d?
+						view.draw(GL_LINE_LOOP, original_loop)
+						view.draw(GL_LINE_LOOP, moved_loop)
+					else
+						view.draw(GL_LINE_STRIP, original_loop)
+						view.draw(GL_LINE_STRIP, moved_loop)
+					end
+
+					original_loop.zip(moved_loop).each do |segment|
+						view.draw(GL_LINE_STRIP, segment)
+					end
+				end
+
+				true
+			end
+
 			def draw_profile_3d(view, color = @profile_color)
 				if @state == "click-click"
 					data = @click_click_data
 					view.drawing_color = color
 					view.line_stipple = ""
 					case @sub_click
-					when "moving", "append", "adjust", "extend"
+					when "moving", "append", "extend"
+						target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
+						unless target_point == @pts[1]
+							draw_translated_cap_preview(view, target_point)
+						end
+					when "adjust"
 						preview_chain = preview_chain_for_active_sub_click
 						if preview_chain && preview_chain.length > 1
 							profile = data[:member].profile
