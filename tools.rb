@@ -1795,8 +1795,15 @@ module VBO
 					view.line_stipple = ""
 					case @sub_click
 					when "moving", "append", "adjust", "extend"
+						member = data[:member] || @member
+						junction_style = member&.profile&.junction_style
 						if @sub_click == "extend"
 							target_point = @pts[0].project_to_line(data[:line])
+							unless target_point == @pts[1]
+								draw_translated_cap_preview(view, target_point)
+							end
+						elsif @sub_click == "append" && junction_style != "continuous"
+							target_point = @pts[0]
 							unless target_point == @pts[1]
 								draw_translated_cap_preview(view, target_point)
 							end
