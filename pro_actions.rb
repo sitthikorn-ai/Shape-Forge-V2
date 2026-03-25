@@ -407,11 +407,12 @@ class VBO::ShapeForge::Dialog1
       when 'split:normal'
         'normal'
       end
-      @members.each{|i|
-        i.make_unique if i.is_a?(Sketchup::Group)
-        pm = VBO::ShapeForge::ForgeElement.new(i)
-        gcs += pm.draw(com)
-      }
+	      @members.each{|i|
+	        i.make_unique if i.is_a?(Sketchup::Group)
+	        pm = VBO::ShapeForge::ForgeElement.new(i)
+	        result = pm.draw(com)
+	        gcs += Array(result).compact
+	      }
       VBO::ShapeForge.disable_shapeforge_sel_observer
       Sketchup.active_model.selection.clear
       VBO::ShapeForge.enable_shapeforge_sel_observer
