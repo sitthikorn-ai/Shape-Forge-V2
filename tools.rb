@@ -1794,6 +1794,14 @@ module VBO
 				end
 			end
 
+			def profile_loops_world(member, transformation, junction_index)
+				return nil unless member
+				loops = member.profile_loops_at(junction_index)
+				return nil if loops.nil? || loops.empty?
+
+				loops.map { |loop| loop.map { |point| point.transform(transformation) } }
+			end
+
 			def align_loop_to_reference(reference_loop, target_loop)
 				return target_loop if reference_loop.nil? || target_loop.nil? || reference_loop.length != target_loop.length
 
@@ -1842,8 +1850,8 @@ module VBO
 				profile = member.profile
 				profile.set_from_profile_member(member)
 
-				original_start_section = actual_cap_loops_world(member, transformation, true)
-				original_end_section = actual_cap_loops_world(member, transformation, false)
+				original_start_section = profile_loops_world(member, transformation, 0) || actual_cap_loops_world(member, transformation, true)
+				original_end_section = profile_loops_world(member, transformation, member.chain.path.length - 1) || actual_cap_loops_world(member, transformation, false)
 				return false if original_start_section.nil? || original_end_section.nil?
 				aligned_end_section = align_section_to_reference(original_start_section, original_end_section)
 
