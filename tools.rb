@@ -1754,6 +1754,57 @@ module VBO
 				true
 			end
 
+			def draw_preview_sections(view, sections, profile)
+				return false if sections.nil? || sections.empty?
+
+				first_section = sections.first
+				return false if first_section.nil? || first_section.empty?
+
+				first_section.each do |loop|
+					profile.is_2d? ? view.draw(GL_LINE_LOOP, loop) : view.draw(GL_LINE_STRIP, loop)
+				end
+
+				return true if sections.length == 1
+
+				sections.each_cons(2) do |previous_section, current_section|
+					previous_section.zip(current_section).each_with_index do |loops, index|
+						if index == 0
+							view.draw(GL_LINES, loops[0].zip(loops[1]).flatten(1))
+						end
+						profile.is_2d? ? view.draw(GL_LINE_LOOP, loops[1]) : view.draw(GL_LINE_STRIP, loops[1])
+					end
+				end
+
+				true
+			end
+
+			def draw_endpoint_extend_preview(view)
+				return false unless @sub_click == "extend"
+
+				data = @click_click_data
+				member = data[:member] || @member
+				return false unless member && data && (data[:start] || data[:end])
+
+				junctions = member.junctions
+				return false unless junctions && junctions.length > 1
+
+				transformation = current_member_transformation(data[:member_path], member)
+				target_point = @pts[0].project_to_line(data[:line])
+				cap_idx = data[:start] ? 0 : junctions.length - 1
+				source_point = member.chain.path[cap_idx].transform(transformation)
+				return false if source_point == target_point
+
+				sections = junctions.map { |junction|
+					junction.map { |loop|
+						loop.map { |pt| pt.transform(transformation) }
+					}
+				}
+				offset_vec = source_point.vector_to(target_point)
+				sections[cap_idx] = sections[cap_idx].map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
+
+				draw_preview_sections(view, sections, member.profile)
+			end
+
 			def draw_profile_3d(view, color = @profile_color)
 				if @state == "click-click"
 					data = @click_click_data
@@ -1761,8 +1812,10 @@ module VBO
 					view.line_stipple = ""
 					case @sub_click
 					when "moving", "append", "adjust", "extend"
-						preview_data = preview_local_chain_for_active_sub_click
-						if preview_data && preview_data[:chain].length > 1
+						if draw_endpoint_extend_preview(view)
+						else
+							preview_data = preview_local_chain_for_active_sub_click
+							if preview_data && preview_data[:chain].length > 1
 							profile = preview_data[:member].profile
 							profile.set_from_profile_member(preview_data[:member])
 							preview_world_chain = preview_data[:chain].map { |pt| pt.transform(preview_data[:transformation]) }
@@ -1776,10 +1829,11 @@ module VBO
 
 							pm = Extruder.new(preview_world_chain, profile, preview_transformation)
 							pm.draw_view(0, -1, view, preview_transformation)
-						elsif @sub_click != "adjust"
-							target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
-							unless target_point == @pts[1]
-								draw_translated_cap_preview(view, target_point)
+							elsif @sub_click != "adjust"
+								target_point = @sub_click == "extend" ? @pts[0].project_to_line(data[:line]) : @pts[0]
+								unless target_point == @pts[1]
+									draw_translated_cap_preview(view, target_point)
+								end
 							end
 						end
 					when "draw"
