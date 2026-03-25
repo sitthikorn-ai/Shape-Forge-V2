@@ -1363,7 +1363,7 @@ module VBO
 						@pts = [@click_click_data[:point], @click_click_data[:point]]
 						return
 					end
-					 transformation =  @pick_transformation
+					transformation = current_member_transformation(member_path, member)
 					chain = member.chain.path.map{|c| c.transform(transformation)}
 					case @sub_click
 					when "extend"
@@ -1557,7 +1557,7 @@ module VBO
 				when "moving", "append", "draw"
 					VBO::ShapeForge::DRAWVIEW.draw_path3d(view, [@ip1, @ip2].map{|c| c.position}, view.inference_locked? ? nil : @branch_color)
 					if @sub_click != "draw"
-						 transformation =  @pick_transformation
+						transformation = current_member_transformation(@click_click_data && @click_click_data[:member_path], @click_click_data && @click_click_data[:member])
 						index = @index_adjust
 						chain = @member.chain.path.map{|c| c.transform(transformation)}
 						i = case index
@@ -1571,7 +1571,7 @@ module VBO
 						VBO::ShapeForge::DRAWVIEW.draw_path3d(view, [chain[i], @pts[0]], @member_color) if i
 					end
 				when "adjust"
-					 transformation =  @pick_transformation
+					transformation = current_member_transformation(@click_click_data && @click_click_data[:member_path], @click_click_data && @click_click_data[:member])
 					chain = @member.chain.path.map{|c| c.transform(transformation)}
 					index = @index_adjust
 					i,j = case index
