@@ -219,8 +219,8 @@ module VBO::ShapeForge
 		# private_class_method :default_transformation
 		def initialize(inst, info = false)
 			#return if inst.nil?
-			@group  =  inst
-			if inst.respond_to?(:definition)
+			@group  =  inst.is_a?(Array) ? inst[0] : inst
+			if @group.respond_to?(:definition)
 				@group.make_unique if @group.is_a?(Sketchup::Group)
 				@su_defn  =  @group.definition
 				#ob = VBO::ShapeForge::ShapeForgeEntityObserver.new
@@ -336,7 +336,7 @@ module VBO::ShapeForge
 		end
 
 		def instance
-			return @group
+			return @group.is_a?(Array) ? @group[0] : @group
 		end
 
 		def instance= (g)
@@ -348,8 +348,8 @@ module VBO::ShapeForge
 		end
 
 		def entities
-			@group = @group[0] if @group.is_a?(Array)
-			@group.definition.entities
+			inst = instance
+			inst.definition.entities
 		end
 
 		def vertices
@@ -1625,7 +1625,8 @@ module VBO::ShapeForge
 		end
 
 		def transformation
-			self.instance.transformation
+			inst = instance
+			inst.respond_to?(:transformation) ? inst.transformation : Geom::Transformation.new
 		end
 
 		def xscale
