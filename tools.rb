@@ -1788,6 +1788,95 @@ module VBO
 				true
 			end
 
+			def draw_preview_loop_section(view, section, profile)
+				section.each do |loop|
+					profile.is_2d? ? view.draw(GL_LINE_LOOP, loop) : view.draw(GL_LINE_STRIP, loop)
+				end
+			end
+
+			def draw_preview_segment_sections(view, start_section, end_section, profile)
+				return false if start_section.nil? || end_section.nil?
+
+				draw_preview_loop_section(view, start_section, profile)
+				start_section.zip(end_section).each_with_index do |loops, index|
+					loops[0].zip(loops[1]).each { |segment| view.draw(GL_LINE_STRIP, segment) } if index == 0
+				end
+				draw_preview_loop_section(view, end_section, profile)
+				true
+			end
+
+			def draw_split_style_preview(view, preview_data, split_type)
+				return false unless preview_data && preview_data[:chain].length > 1
+				return false unless ["normal", "miter_joint", "butt_joint"].include?(split_type)
+
+				member = preview_data[:member]
+				profile = member.profile
+				profile.set_from_profile_member(member)
+				transformation = preview_data[:transformation]
+				chain_world = preview_data[:chain].map { |point| point.transform(transformation) }
+				extruder = Extruder.new(preview_data[:chain], profile)
+				junctions = preview_data[:chain].each_index.map { |index|
+					extruder.profile_loops_at(index).map { |loop|
+						loop.map { |point| point.transform(transformation) }
+					}
+				}
+				return false if junctions.empty?
+
+				last = junctions[0]
+				junctions.each_with_index do |this, index|
+					next if index == 0
+
+					last_copy = last.map { |loop| loop.map(&:clone) }
+					this_copy = this.map { |loop| loop.map(&:clone) }
+					sub_start = chain_world[index - 1]
+					sub_end = chain_world[index]
+					sub_vector = sub_start.vector_to(sub_end)
+
+					case split_type
+					when "normal"
+						start_plane = [sub_start, sub_vector]
+						last_copy = last_copy.map { |loop| loop.map { |point| point.project_to_plane(start_plane) } }
+						end_plane = [sub_end, sub_vector.reverse]
+						this_copy = this_copy.map { |loop| loop.map { |point| point.project_to_plane(end_plane) } }
+					when "miter_joint", "butt_joint"
+						if index > 1
+							v1 = chain_world[index - 2].vector_to(chain_world[index - 1])
+							v2 = v1 * sub_vector
+							last_plane_normal = v1 * v2
+							last_plane_normal = sub_vector if last_plane_normal.length == 0
+						else
+							last_plane_normal = sub_vector
+						end
+
+						if index < chain_world.length - 1
+							v1 = chain_world[index].vector_to(chain_world[index + 1])
+							v2 = v1 * sub_vector
+							next_plane_normal = v1 * v2
+							next_plane_normal = sub_vector if next_plane_normal.length == 0
+						else
+							next_plane_normal = sub_vector.reverse
+						end
+
+						nearest_last = last_copy.flatten.min_by { |point| point.distance(sub_end) }
+						start_plane = [nearest_last, last_plane_normal]
+						last_copy = last_copy.map { |loop|
+							loop.map { |point| Geom.intersect_line_plane([point, sub_vector], start_plane) }
+						}
+
+						farthest_this = this_copy.flatten.max_by { |point| point.distance(sub_start) }
+						end_plane = [farthest_this, next_plane_normal]
+						this_copy = this_copy.map { |loop|
+							loop.map { |point| Geom.intersect_line_plane([point, sub_vector], end_plane) }
+						}
+					end
+
+					draw_preview_segment_sections(view, last_copy, this_copy, profile)
+					last = this
+				end
+
+				true
+			end
+
 			def draw_profile_3d(view, color = @profile_color)
 				if @state == "click-click"
 					data = @click_click_data
@@ -1802,14 +1891,10 @@ module VBO
 							unless target_point == @pts[1]
 								draw_translated_cap_preview(view, target_point)
 							end
-						elsif @sub_click == "append" && junction_style != "continuous"
-							target_point = @pts[0]
-							unless target_point == @pts[1]
-								draw_translated_cap_preview(view, target_point)
-							end
 						else
 							preview_data = preview_local_chain_for_active_sub_click
-							if preview_data && preview_data[:chain].length > 1
+							if @sub_click == "append" && draw_split_style_preview(view, preview_data, junction_style)
+							elsif preview_data && preview_data[:chain].length > 1
 								profile = preview_data[:member].profile
 								profile.set_from_profile_member(preview_data[:member])
 								pm = Extruder.new(preview_data[:chain], profile)
