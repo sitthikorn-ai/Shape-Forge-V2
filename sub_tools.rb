@@ -151,7 +151,8 @@ module VBO
 				end
 				data[:member].set_chain(chain)
 				data[:member].delete_attribute("cap_#{cap}_trim")
-				data[:member].draw
+				draw_mode = chain.length == 2 ? "continuous" : data[:member].profile.junction_style
+				data[:member].draw(draw_mode)
 				Sketchup.active_model.commit_operation
 				Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
 				trim_after_draw(data[:member])
