@@ -1842,20 +1842,20 @@ module VBO
 				profile = member.profile
 				profile.set_from_profile_member(member)
 
-				start_section = actual_cap_loops_world(member, transformation, true)
-				end_section = actual_cap_loops_world(member, transformation, false)
-				return false if start_section.nil? || end_section.nil?
+				original_start_section = actual_cap_loops_world(member, transformation, true)
+				original_end_section = actual_cap_loops_world(member, transformation, false)
+				return false if original_start_section.nil? || original_end_section.nil?
 
 				if moving_start
 					source_point = member.chain.path[0].transform(transformation)
 					offset_vec = source_point.vector_to(target_point)
-					start_section = start_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
-					end_section = align_section_to_reference(start_section, end_section)
+					start_section = original_start_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
+					end_section = align_section_to_reference(original_start_section, original_end_section)
 				else
 					source_point = member.chain.path[-1].transform(transformation)
 					offset_vec = source_point.vector_to(target_point)
-					end_section = end_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
-					end_section = align_section_to_reference(start_section, end_section)
+					start_section = align_section_to_reference(original_end_section, original_start_section)
+					end_section = original_end_section.map { |loop| loop.map { |point| point.offset(offset_vec) } }
 				end
 
 				draw_preview_segment_sections(view, start_section, end_section, profile)
