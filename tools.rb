@@ -1704,7 +1704,7 @@ module VBO
 				return false if cap_junction.nil? || cap_junction.empty?
 
 				transformation = current_member_transformation
-				source_point = data[:point]
+				source_point = @member.chain.path[cap_idx].transform(transformation)
 				offset_vec = source_point.vector_to(target_point)
 				loops_world = cap_junction.map { |loop| loop.map { |pt| pt.transform(transformation) } }
 				moved_loops = loops_world.map { |loop| loop.map { |pt| pt.offset(offset_vec) } }
