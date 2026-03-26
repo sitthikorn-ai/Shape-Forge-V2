@@ -5515,6 +5515,7 @@ module VBO
 			def initialize(entities)
 				@entities = entities.select(&:valid?)
 				@current_entity = @entities.first
+				@hover_face = nil
 				@highlight_face = nil
 				@pick_path = nil
 				@pick_transformation = nil
@@ -5535,6 +5536,7 @@ module VBO
 			end
 
 			def onMouseMove(flags, x, y, view)
+				hover_face = nil
 				face = nil
 				path = nil
 				entity_trans = nil
@@ -5544,6 +5546,7 @@ module VBO
 					candidate_path = ip.instance_path.to_a
 					entity = candidate_path.find { |p| @entities.include?(p) }
 					if entity
+						hover_face = ip.face
 						entity_path = path_to_entity(candidate_path, entity)
 						trans = entity_transformation(entity_path, entity)
 						candidate = profile_candidate_for(entity, ip.face, trans)
@@ -5565,6 +5568,7 @@ module VBO
 						next unless candidate_face
 						entity = candidate_path.find { |p| @entities.include?(p) }
 						next unless entity
+						hover_face = candidate_face
 						entity_path = path_to_entity(candidate_path, entity)
 						trans = entity_transformation(entity_path, entity)
 						candidate = profile_candidate_for(entity, candidate_face, trans)
@@ -5577,11 +5581,13 @@ module VBO
 				end
 
 				if face && path
+					@hover_face = hover_face || face
 					@highlight_face = face
 					@pick_path = path
 					@pick_transformation = entity_trans || Sketchup::InstancePath.new(path).transformation
 					view.tooltip = "Click face to convert object to Shape Forge"
 				else
+					@hover_face = nil
 					@highlight_face = nil
 					@pick_path = nil
 					@pick_transformation = nil
@@ -5640,6 +5646,7 @@ module VBO
 					Sketchup.active_model.tools.pop_tool
 				else
 					@current_entity = @entities.first
+					@hover_face = nil
 					@highlight_face = nil
 					@pick_path = nil
 					@pick_transformation = nil
@@ -5650,10 +5657,11 @@ module VBO
 			end
 
 			def draw(view)
-				return unless @highlight_face && @highlight_face.valid? && @pick_transformation
+				face_to_draw = @hover_face || @highlight_face
+				return unless face_to_draw && face_to_draw.valid? && @pick_transformation
 
 				# Draw highlighted face outline
-				verts = @highlight_face.outer_loop.vertices
+				verts = face_to_draw.outer_loop.vertices
 				pts = verts.map { |v| v.position.transform(@pick_transformation) }
 
 				view.drawing_color = @edge_color
