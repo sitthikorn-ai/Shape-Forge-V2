@@ -5535,24 +5535,38 @@ module VBO
 			end
 
 			def onMouseMove(flags, x, y, view)
-				ph = view.pick_helper
-				ph.do_pick(x, y)
-				best = ph.best_picked
+				face = nil
+				path = nil
 
-				if best.is_a?(Sketchup::Face)
-					path = ph.path_at(0)
-					# Check if the face belongs to one of our target entities
-					if path && path.to_a.any? { |p| @entities.include?(p) }
-						@highlight_face = best
-						@pick_path = path
-						@pick_transformation = Sketchup::InstancePath.new(path).transformation
-						view.tooltip = "Click face to convert object to Shape Forge"
-					else
-						@highlight_face = nil
-						@pick_path = nil
-						@pick_transformation = nil
-						view.tooltip = nil
+				ip = view.inputpoint(x, y)
+				if ip.valid? && ip.face
+					candidate_path = ip.instance_path.to_a
+					if candidate_path.any? { |p| @entities.include?(p) }
+						face = ip.face
+						path = candidate_path
 					end
+				end
+
+				if face.nil?
+					ph = view.pick_helper
+					ph.do_pick(x, y)
+					0.upto(ph.count - 1) do |i|
+						candidate_path = ph.path_at(i)
+						next unless candidate_path
+						candidate_face = candidate_path.reverse.find { |p| p.is_a?(Sketchup::Face) }
+						next unless candidate_face
+						next unless candidate_path.to_a.any? { |p| @entities.include?(p) }
+						face = candidate_face
+						path = candidate_path
+						break
+					end
+				end
+
+				if face && path
+					@highlight_face = face
+					@pick_path = path
+					@pick_transformation = Sketchup::InstancePath.new(path).transformation
+					view.tooltip = "Click face to convert object to Shape Forge"
 				else
 					@highlight_face = nil
 					@pick_path = nil
