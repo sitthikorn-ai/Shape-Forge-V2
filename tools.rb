@@ -5537,13 +5537,20 @@ module VBO
 			def onMouseMove(flags, x, y, view)
 				face = nil
 				path = nil
+				entity_trans = nil
 
 				ip = view.inputpoint(x, y)
 				if ip.valid? && ip.face
 					candidate_path = ip.instance_path.to_a
 					entity = candidate_path.find { |p| @entities.include?(p) }
-					if entity && valid_profile_face?(entity, ip.face, entity.transformation)
-						face = ip.face
+					if entity
+						entity_path = path_to_entity(candidate_path, entity)
+						trans = entity_transformation(entity_path, entity)
+						candidate = profile_candidate_for(entity, ip.face, trans)
+						if candidate
+							face = candidate[:face]
+							entity_trans = trans
+						end
 						path = candidate_path
 					end
 				end
@@ -5558,8 +5565,12 @@ module VBO
 						next unless candidate_face
 						entity = candidate_path.find { |p| @entities.include?(p) }
 						next unless entity
-						next unless valid_profile_face?(entity, candidate_face, entity.transformation)
-						face = candidate_face
+						entity_path = path_to_entity(candidate_path, entity)
+						trans = entity_transformation(entity_path, entity)
+						candidate = profile_candidate_for(entity, candidate_face, trans)
+						next unless candidate
+						face = candidate[:face]
+						entity_trans = trans
 						path = candidate_path
 						break
 					end
@@ -5568,7 +5579,7 @@ module VBO
 				if face && path
 					@highlight_face = face
 					@pick_path = path
-					@pick_transformation = Sketchup::InstancePath.new(path).transformation
+					@pick_transformation = entity_trans || Sketchup::InstancePath.new(path).transformation
 					view.tooltip = "Click face to convert object to Shape Forge"
 				else
 					@highlight_face = nil
@@ -5585,10 +5596,13 @@ module VBO
 				# Find which target entity this face belongs to
 				entity = @pick_path.to_a.find { |p| @entities.include?(p) }
 				return unless entity
-				return unless valid_profile_face?(entity, @highlight_face, entity.transformation)
+				entity_path = path_to_entity(@pick_path.to_a, entity)
+				trans = entity_transformation(entity_path, entity)
+				candidate = profile_candidate_for(entity, @highlight_face, trans)
+				return unless candidate
 
-				trans = entity.transformation
-				face = @highlight_face
+				face = candidate[:face]
+				opposite_face = candidate[:opposite_face]
 
 				# Create profile from selected face
 				profile = VBO::ShapeForge::Shape.new(face)
@@ -5601,7 +5615,7 @@ module VBO
 				entity_name = "Shape Forge" if entity_name.empty?
 				profile.name = entity_name
 
-				chain_points = build_chain_points_for_entity(entity, face, trans)
+				chain_points = build_chain_points_for_entity(entity, face, trans, opposite_face)
 
 				# Create ForgeElement
 				model = Sketchup.active_model
@@ -5650,14 +5664,59 @@ module VBO
 				view.draw(GL_POLYGON, pts)
 			end
 
+			def path_to_entity(candidate_path, entity)
+				path = candidate_path.to_a
+				index = path.index(entity)
+				index ? path[0..index] : [entity]
+			end
+
+			def entity_transformation(entity_path, entity)
+				return entity.transformation if entity_path.nil? || entity_path.empty?
+				Sketchup::InstancePath.new(entity_path).transformation
+			rescue
+				entity.transformation
+			end
+
 			def face_center_world(face, trans)
-				Geom::Point3d.new(face.bounds.center).transform(trans)
+				pts = face.outer_loop.vertices.map { |v| v.position }
+				return Geom::Point3d.new(face.bounds.center).transform(trans) if pts.empty?
+				sum = pts.reduce([0.0, 0.0, 0.0]) { |memo, pt|
+					[memo[0] + pt.x, memo[1] + pt.y, memo[2] + pt.z]
+				}
+				Geom::Point3d.new(sum[0] / pts.length, sum[1] / pts.length, sum[2] / pts.length).transform(trans)
+			end
+
+			def profile_faces_for_entity(entity, trans)
+				faces = entity.definition.entities.grep(Sketchup::Face)
+				candidates = faces.map { |face|
+					opposite_face = find_opposite_face(entity, face, trans)
+					next if opposite_face.nil?
+					{
+						face: face,
+						opposite_face: opposite_face,
+						center: face_center_world(face, trans)
+					}
+				}.compact
+				candidates.uniq { |item|
+					[item[:face].persistent_id, item[:opposite_face].persistent_id].sort
+				}
+			end
+
+			def profile_candidate_for(entity, hovered_face, trans)
+				profiles = profile_faces_for_entity(entity, trans)
+				return nil if profiles.empty?
+
+				exact = profiles.find { |item| item[:face] == hovered_face }
+				return exact if exact
+
+				hover_center = face_center_world(hovered_face, trans)
+				profiles.min_by { |item| item[:center].distance(hover_center) }
 			end
 
 			def find_opposite_face(entity, profile_face, trans)
 				world_normal = profile_face.normal.transform(trans)
 				profile_center = face_center_world(profile_face, trans)
-				tolerance = 0.01
+				tolerance = 0.1
 				profile_area = profile_face.area
 				profile_vertex_count = profile_face.vertices.length
 
@@ -5677,12 +5736,12 @@ module VBO
 			end
 
 			def valid_profile_face?(entity, face, trans)
-				!find_opposite_face(entity, face, trans).nil?
+				!profile_candidate_for(entity, face, trans).nil?
 			end
 
-			def build_chain_points_for_entity(entity, profile_face, trans)
+			def build_chain_points_for_entity(entity, profile_face, trans, opposite_face = nil)
 				center = face_center_world(profile_face, trans)
-				opposite_face = find_opposite_face(entity, profile_face, trans)
+				opposite_face ||= find_opposite_face(entity, profile_face, trans)
 				return fallback_chain_points(entity, profile_face, trans) unless opposite_face
 
 				profile_edges_set = Set.new(profile_face.edges)
