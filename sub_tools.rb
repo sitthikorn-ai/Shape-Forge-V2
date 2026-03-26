@@ -76,8 +76,9 @@ module VBO
 				VBO::ShapeForge.manager_need_reload
 			end
 
-			def trim_after_draw(member, trans = Geom::Transformation.new)
-				member.update_trim(trans)
+			def trim_after_draw(member, trans = nil)
+				trans ||= member.transformation if member && member.respond_to?(:transformation)
+				member.update_trim(trans || Geom::Transformation.new)
 			end
 
 			def trim_member_to_plane(data, transformation, chain)
@@ -162,7 +163,7 @@ module VBO
 				data[:member].delete_attribute("cap_#{cap}_trim")
 				Sketchup.active_model.commit_operation
 				Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
-				trim_after_draw(data[:member])
+				trim_after_draw(data[:member], current_member_transformation(data[:member_path], data[:member]))
 				@member_path[-1] = data[:member].instance if @member_path
 				Sketchup.active_model.commit_operation
 				reset

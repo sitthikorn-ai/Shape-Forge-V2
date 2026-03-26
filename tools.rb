@@ -1365,6 +1365,9 @@ module VBO
 					end
 					member_path = normalize_member_path(member_path, member)
 					transformation = current_member_transformation(member_path, member)
+					@member = member if member
+					@member_path = member_path if member_path
+					@pick_transformation = transformation if transformation
 					chain = member.chain.path.map{|c| c.transform(transformation)}
 					case @sub_click
 					when "extend"
@@ -2156,7 +2159,7 @@ module VBO
 
 			def do_extend
 				data = @click_click_data
-				transformation = Sketchup::InstancePath.new(@member_path).transformation
+				transformation = current_member_transformation(data[:member_path], data[:member])
 				chain = data[:member].chain.path
 
 				if @trim_objects
@@ -2190,7 +2193,7 @@ module VBO
 				data[:member].draw
 				#Sketchup.active_model.commit_operation
 				#Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
-				trim_after_draw(data[:member])
+				trim_after_draw(data[:member], current_member_transformation(data[:member_path], data[:member]))
 				@ip1.clear
 				@cpoints.each{|c| c.erase!}
 				@cpoints = []
@@ -2206,7 +2209,7 @@ module VBO
 				Sketchup.active_model.start_operation("VBO ShapeForge - Move Member Cap", true)
 				data = @click_click_data
 				begin
-					transformation = Sketchup::InstancePath.new(@member_path).transformation
+					transformation = current_member_transformation(data[:member_path], data[:member])
 				rescue ArgumentError
 					Sketchup.active_model.abort_operation
 					@member_path = nil
@@ -2236,7 +2239,7 @@ module VBO
 				data[:member].delete_attribute("cap_#{cap}_trim")
 				#Sketchup.active_model.commit_operation
 				#Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
-				trim_after_draw(data[:member])
+				trim_after_draw(data[:member], current_member_transformation(data[:member_path], data[:member]))
 				#data[:member].transform!(transformation)
 
 				reset
@@ -2253,7 +2256,7 @@ module VBO
 			def do_adjust
 				Sketchup.active_model.start_operation("VBO ShapeForge - Move Member Junction", true)
 				data = @click_click_data
-				transformation = Sketchup::InstancePath.new(@member_path).transformation
+				transformation = current_member_transformation(data[:member_path], data[:member])
 				chain = data[:member].chain.path
 				index = @index_adjust
 				i,j = case index
@@ -2279,7 +2282,7 @@ module VBO
 				data[:member].draw
 				#Sketchup.active_model.commit_operation
 				#Sketchup.active_model.start_operation("VBO ShapeForge - Trim Member Cap", true)
-				trim_after_draw(data[:member])
+				trim_after_draw(data[:member], current_member_transformation(data[:member_path], data[:member]))
 				Sketchup.active_model.commit_operation
 				reset
 				@member_path[-1] = data[:member].instance
