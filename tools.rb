@@ -5597,15 +5597,23 @@ module VBO
 			end
 
 			def onLButtonDown(flags, x, y, view)
-				return unless @highlight_face && @pick_path
+				return unless (@hover_face || @highlight_face) && @pick_path
 
 				# Find which target entity this face belongs to
 				entity = @pick_path.to_a.find { |p| @entities.include?(p) }
 				return unless entity
 				entity_path = path_to_entity(@pick_path.to_a, entity)
 				trans = entity_transformation(entity_path, entity)
-				candidate = profile_candidate_for(entity, @highlight_face, trans)
-				return unless candidate
+				source_face = @hover_face || @highlight_face
+				candidate = if source_face
+					opposite_face = find_opposite_face(entity, source_face, trans)
+					if opposite_face
+						{ face: source_face, opposite_face: opposite_face }
+					else
+						profile_candidate_for(entity, source_face, trans)
+					end
+				end
+				return unless candidate && candidate[:face]
 
 				face = candidate[:face]
 				opposite_face = candidate[:opposite_face]
