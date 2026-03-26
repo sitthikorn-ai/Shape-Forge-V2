@@ -5755,53 +5755,24 @@ module VBO
 				profile_edges_set = Set.new(profile_face.edges)
 				opposite_edges_set = Set.new(opposite_face.edges)
 				longitudinal_chains = []
+				blocked_edges = profile_edges_set | opposite_edges_set
+				target_vertices = opposite_face.loops.flat_map(&:vertices).uniq
+				start_vertices = profile_face.loops.flat_map(&:vertices).uniq
 
-				profile_face.vertices.each do |start_vertex|
-					chain_pts = [start_vertex.position.transform(trans)]
-					current_vertex = start_vertex
-					visited = Set.new([current_vertex])
-					current_dir = nil
-					max_steps = entity.definition.entities.grep(Sketchup::Face).length * 2
-
-					max_steps.times do
-						candidate_edges = current_vertex.edges.select { |edge|
-							other = edge.other_vertex(current_vertex)
-							!visited.include?(other) &&
-								!profile_edges_set.include?(edge) &&
-								!opposite_edges_set.include?(edge)
-						}
-						break if candidate_edges.empty?
-
-						next_edge = if current_dir
-							candidate_edges.min_by { |edge|
-								dir = current_vertex.position.vector_to(edge.other_vertex(current_vertex).position)
-								dir.valid? && current_dir.valid? ? current_dir.angle_between(dir) : Float::INFINITY
-							}
-						else
-							candidate_edges.max_by { |edge|
-								edge.length
-							}
-						end
-						break unless next_edge
-
-						next_vertex = next_edge.other_vertex(current_vertex)
-						current_dir = current_vertex.position.vector_to(next_vertex.position)
-						chain_pts << next_vertex.position.transform(trans)
-						visited << next_vertex
-						current_vertex = next_vertex
-						break if opposite_face.vertices.include?(next_vertex)
-					end
-
-					longitudinal_chains << chain_pts if chain_pts.length >= 2 && opposite_face.vertices.include?(current_vertex)
+				start_vertices.each do |start_vertex|
+					vertex_path = shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
+					next unless vertex_path && vertex_path.length >= 2
+					longitudinal_chains << vertex_path.map { |vertex| vertex.position.transform(trans) }
 				end
 
 				if longitudinal_chains.empty?
 					[center, face_center_world(opposite_face, trans)]
 				else
-					max_len = longitudinal_chains.max_by(&:length).length
+					sample_count = [[longitudinal_chains.map(&:length).max, 2].max, 24].min
+					resampled_chains = longitudinal_chains.map { |chain| resample_polyline(chain, sample_count) }
 					chain_points = []
-					max_len.times do |index|
-						pts = longitudinal_chains.map { |chain| chain[index] }.compact
+					sample_count.times do |index|
+						pts = resampled_chains.map { |chain| chain[index] }.compact
 						next if pts.empty?
 						sum = pts.reduce([0.0, 0.0, 0.0]) { |memo, pt|
 							[memo[0] + pt.x, memo[1] + pt.y, memo[2] + pt.z]
@@ -5809,8 +5780,81 @@ module VBO
 						chain_points << Geom::Point3d.new(sum[0] / pts.length, sum[1] / pts.length, sum[2] / pts.length)
 					end
 					chain_points = chain_points.uniq { |pt| [pt.x.round(6), pt.y.round(6), pt.z.round(6)] }
+					chain_points[0] = center if chain_points[0]
+					chain_points[-1] = face_center_world(opposite_face, trans) if chain_points[-1]
 					chain_points.length >= 2 ? chain_points : [center, face_center_world(opposite_face, trans)]
 				end
+			end
+
+			def shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
+				target_set = Set.new(target_vertices)
+				distances = { start_vertex => 0.0 }
+				previous = {}
+				queue = [start_vertex]
+				visited = Set.new
+
+				until queue.empty?
+					current = queue.min_by { |vertex| distances[vertex] || Float::INFINITY }
+					queue.delete(current)
+					next if visited.include?(current)
+					visited << current
+					break if target_set.include?(current)
+
+					current.edges.each do |edge|
+						next if blocked_edges.include?(edge)
+						neighbor = edge.other_vertex(current)
+						next if visited.include?(neighbor)
+						alt = distances[current] + edge.length
+						if alt < (distances[neighbor] || Float::INFINITY)
+							distances[neighbor] = alt
+							previous[neighbor] = current
+							queue << neighbor unless queue.include?(neighbor)
+						end
+					end
+				end
+
+				target = target_vertices.min_by { |vertex| distances[vertex] || Float::INFINITY }
+				return nil unless target && distances[target]
+
+				path = [target]
+				while previous[path.first]
+					path.unshift(previous[path.first])
+				end
+				path
+			end
+
+			def polyline_length(points)
+				return 0.0 if points.length < 2
+				length = 0.0
+				(0...points.length - 1).each do |index|
+					length += points[index].distance(points[index + 1])
+				end
+				length
+			end
+
+			def point_on_polyline(points, distance)
+				return points.first if points.length < 2 || distance <= 0.0
+				run = 0.0
+				(0...points.length - 1).each do |index|
+					p1 = points[index]
+					p2 = points[index + 1]
+					seg = p1.distance(p2)
+					next if seg <= 0.0
+					if run + seg >= distance
+						ratio = (distance - run) / seg
+						return Geom.linear_combination(1.0 - ratio, p1, ratio, p2)
+					end
+					run += seg
+				end
+				points.last
+			end
+
+			def resample_polyline(points, sample_count)
+				return points if points.length <= 2 || sample_count <= 2
+				total = polyline_length(points)
+				return Array.new(sample_count, points.first) if total <= 0.0
+				step = total / (sample_count - 1).to_f
+				Array.new(sample_count) { |index| point_on_polyline(points, step * index) }
 			end
 
 			def fallback_chain_points(entity, profile_face, trans)
