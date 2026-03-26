@@ -5597,16 +5597,7 @@ module VBO
 				entity_name = "Shape Forge" if entity_name.empty?
 				profile.name = entity_name
 
-				center = face_center_world(face, trans)
-				opposite_face = find_opposite_face(entity, face, trans)
-				if opposite_face
-					chain_points = [center, face_center_world(opposite_face, trans)]
-				else
-					normal = face.normal.transform(trans)
-					bb = entity.bounds
-					depth = [bb.width, bb.height, bb.depth].max
-					chain_points = [center, center.offset(normal, depth)]
-				end
+				chain_points = build_chain_points_for_entity(entity, face, trans)
 
 				# Create ForgeElement
 				model = Sketchup.active_model
@@ -5662,17 +5653,97 @@ module VBO
 			def find_opposite_face(entity, profile_face, trans)
 				world_normal = profile_face.normal.transform(trans)
 				profile_center = face_center_world(profile_face, trans)
+				tolerance = 0.01
+				profile_area = profile_face.area
+				profile_vertex_count = profile_face.vertices.length
 
 				entity.definition.entities.grep(Sketchup::Face)
 					.reject { |candidate| candidate == profile_face }
 					.select { |candidate|
 						candidate_normal = candidate.normal.transform(trans)
-						candidate_normal.parallel?(world_normal)
+						candidate_normal.parallel?(world_normal) &&
+							(candidate.area - profile_area).abs <= tolerance &&
+							candidate.vertices.length == profile_vertex_count &&
+							candidate.edges.none? { |edge| profile_face.edges.include?(edge) }
 					}
 					.max_by { |candidate|
 						candidate_center = face_center_world(candidate, trans)
 						profile_center.distance(candidate_center)
 					}
+			end
+
+			def build_chain_points_for_entity(entity, profile_face, trans)
+				center = face_center_world(profile_face, trans)
+				opposite_face = find_opposite_face(entity, profile_face, trans)
+				return fallback_chain_points(entity, profile_face, trans) unless opposite_face
+
+				profile_edges_set = Set.new(profile_face.edges)
+				opposite_edges_set = Set.new(opposite_face.edges)
+				longitudinal_chains = []
+
+				profile_face.vertices.each do |start_vertex|
+					chain_pts = [start_vertex.position.transform(trans)]
+					current_vertex = start_vertex
+					visited = Set.new([current_vertex])
+					current_dir = nil
+					max_steps = entity.definition.entities.grep(Sketchup::Face).length * 2
+
+					max_steps.times do
+						candidate_edges = current_vertex.edges.select { |edge|
+							other = edge.other_vertex(current_vertex)
+							!visited.include?(other) &&
+								!profile_edges_set.include?(edge) &&
+								!opposite_edges_set.include?(edge)
+						}
+						break if candidate_edges.empty?
+
+						next_edge = if current_dir
+							candidate_edges.min_by { |edge|
+								dir = current_vertex.position.vector_to(edge.other_vertex(current_vertex).position)
+								dir.valid? && current_dir.valid? ? current_dir.angle_between(dir) : Float::INFINITY
+							}
+						else
+							candidate_edges.max_by { |edge|
+								edge.length
+							}
+						end
+						break unless next_edge
+
+						next_vertex = next_edge.other_vertex(current_vertex)
+						current_dir = current_vertex.position.vector_to(next_vertex.position)
+						chain_pts << next_vertex.position.transform(trans)
+						visited << next_vertex
+						current_vertex = next_vertex
+						break if opposite_face.vertices.include?(next_vertex)
+					end
+
+					longitudinal_chains << chain_pts if chain_pts.length >= 2 && opposite_face.vertices.include?(current_vertex)
+				end
+
+				if longitudinal_chains.empty?
+					[center, face_center_world(opposite_face, trans)]
+				else
+					max_len = longitudinal_chains.max_by(&:length).length
+					chain_points = []
+					max_len.times do |index|
+						pts = longitudinal_chains.map { |chain| chain[index] }.compact
+						next if pts.empty?
+						sum = pts.reduce([0.0, 0.0, 0.0]) { |memo, pt|
+							[memo[0] + pt.x, memo[1] + pt.y, memo[2] + pt.z]
+						}
+						chain_points << Geom::Point3d.new(sum[0] / pts.length, sum[1] / pts.length, sum[2] / pts.length)
+					end
+					chain_points = chain_points.uniq { |pt| [pt.x.round(6), pt.y.round(6), pt.z.round(6)] }
+					chain_points.length >= 2 ? chain_points : [center, face_center_world(opposite_face, trans)]
+				end
+			end
+
+			def fallback_chain_points(entity, profile_face, trans)
+				center = face_center_world(profile_face, trans)
+				normal = profile_face.normal.transform(trans)
+				bb = entity.bounds
+				depth = [bb.width, bb.height, bb.depth].max
+				[center, center.offset(normal, depth)]
 			end
 
 			def onCancel(reason, view)
