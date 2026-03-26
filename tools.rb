@@ -391,12 +391,15 @@ module VBO
 						@closest_point = nil
 					end
 
-					case @sub_click
-					when "extend"
-						vector = @pts[1].vector_to(@pts[0].project_to_line(data[:line]))
-						length = vector.length
-						length *= -1 if length != 0 && !vector.samedirection?(data[:vector])
-						@trim_objects  = {
+				case @sub_click
+				when "extend"
+					projected_point = @pts[0].project_to_line(data[:line])
+					@pts[0] = projected_point
+					@ip2 = Sketchup::InputPoint.new(projected_point)
+					vector = @pts[1].vector_to(projected_point)
+					length = vector.length
+					length *= -1 if length != 0 && !vector.samedirection?(data[:vector])
+					@trim_objects  = {
 							path: path,
 							pos: [flags, [x,y]],
 							solid:  solid,
@@ -692,7 +695,11 @@ module VBO
 					ph = view.pick_helper
 					ph.do_pick(x, y)
 					@path = ph.path_at(0)
-					if @closest_point
+					if @sub_click == "extend" && @click_click_data && @click_click_data[:line]
+						projected_point = @ip2.position.project_to_line(@click_click_data[:line])
+						@ip2 = Sketchup::InputPoint.new(projected_point)
+						@pts << projected_point
+					elsif @closest_point
 						if view.inference_locked?
 						else
 						end
