@@ -206,7 +206,7 @@ module VBO
 							if @closest_point || @pos[2]
 								change_cursor("hold")
 								onSetCursor
-								Sketchup.set_status_text "Click to adjust member's point"
+								Sketchup.set_status_text "Click to adjust member's point. Double Click End Shape to Extend"
 							else
 								if @temp_profile != @member.profile
 									change_cursor("get")
@@ -1274,7 +1274,7 @@ module VBO
 			end
 
 			def current_mode_prompt
-				return nil unless @state == "click-click"
+				return "Double Click End Shape to Extend" unless @state == "click-click"
 
 				case @sub_click
 				when "extend"
