@@ -5597,83 +5597,15 @@ module VBO
 				entity_name = "Shape Forge" if entity_name.empty?
 				profile.name = entity_name
 
-				# Compute path: trace perpendicular edges from the face
-				face_vertices = face.vertices
-				profile_edges_set = Set.new(face.edges)
-
-				# Find the opposite end by tracing longitudinal edges
-				longitudinal_chains = []
-				face_vertices.each do |sv|
-					chain_pts = [sv.position.transform(trans)]
-					current_vertex = sv
-					visited = Set.new([current_vertex])
-
-					100.times do
-						next_edge = current_vertex.edges.find { |e|
-							!profile_edges_set.include?(e) &&
-							!visited.include?(e.other_vertex(current_vertex))
-						}
-						break unless next_edge
-
-						next_vertex = next_edge.other_vertex(current_vertex)
-						chain_pts << next_vertex.position.transform(trans)
-						visited << next_vertex
-						current_dir = current_vertex.position.vector_to(next_vertex.position)
-						current_vertex = next_vertex
-
-						# Continue tracing
-						candidate_edges = current_vertex.edges.select { |e|
-							other = e.other_vertex(current_vertex)
-							!visited.include?(other) && !profile_edges_set.include?(e)
-						}
-
-						if candidate_edges.length > 1
-							best_edge = candidate_edges.min_by { |e|
-								dir = current_vertex.position.vector_to(e.other_vertex(current_vertex).position)
-								dir.valid? && current_dir.valid? ? current_dir.angle_between(dir) : Float::INFINITY
-							}
-							next_edge = best_edge
-						elsif candidate_edges.length == 1
-							next_edge = candidate_edges[0]
-						else
-							break
-						end
-
-						next_vertex = next_edge.other_vertex(current_vertex)
-						chain_pts << next_vertex.position.transform(trans)
-						visited << next_vertex
-						current_vertex = next_vertex
-					end
-
-					longitudinal_chains << chain_pts if chain_pts.length >= 2
-				end
-
-				# Build chain from longitudinal midpoints
-				if longitudinal_chains.empty?
-					# Fallback: use face normal direction with bounding box depth
-					center = Geom::Point3d.new(face.bounds.center).transform(trans)
+				center = face_center_world(face, trans)
+				opposite_face = find_opposite_face(entity, face, trans)
+				if opposite_face
+					chain_points = [center, face_center_world(opposite_face, trans)]
+				else
 					normal = face.normal.transform(trans)
-					bb = entity.definition.bounds
+					bb = entity.bounds
 					depth = [bb.width, bb.height, bb.depth].max
 					chain_points = [center, center.offset(normal, depth)]
-				else
-					max_len = longitudinal_chains.max_by(&:length).length
-					chain_points = []
-					max_len.times do |i|
-						pts = longitudinal_chains.map { |lc| lc[i] }.compact
-						next if pts.empty?
-						avg = pts.reduce([0,0,0]) { |sum, pt|
-							[sum[0] + pt.x, sum[1] + pt.y, sum[2] + pt.z]
-						}
-						chain_points << Geom::Point3d.new(avg[0] / pts.length, avg[1] / pts.length, avg[2] / pts.length)
-					end
-					if chain_points.length < 2
-						center = Geom::Point3d.new(face.bounds.center).transform(trans)
-						normal = face.normal.transform(trans)
-						bb = entity.definition.bounds
-						depth = [bb.width, bb.height, bb.depth].max
-						chain_points = [center, center.offset(normal, depth)]
-					end
 				end
 
 				# Create ForgeElement
@@ -5721,6 +5653,26 @@ module VBO
 
 				view.drawing_color = @highlight_color
 				view.draw(GL_POLYGON, pts)
+			end
+
+			def face_center_world(face, trans)
+				Geom::Point3d.new(face.bounds.center).transform(trans)
+			end
+
+			def find_opposite_face(entity, profile_face, trans)
+				world_normal = profile_face.normal.transform(trans)
+				profile_center = face_center_world(profile_face, trans)
+
+				entity.definition.entities.grep(Sketchup::Face)
+					.reject { |candidate| candidate == profile_face }
+					.select { |candidate|
+						candidate_normal = candidate.normal.transform(trans)
+						candidate_normal.parallel?(world_normal)
+					}
+					.max_by { |candidate|
+						candidate_center = face_center_world(candidate, trans)
+						profile_center.distance(candidate_center)
+					}
 			end
 
 			def onCancel(reason, view)
