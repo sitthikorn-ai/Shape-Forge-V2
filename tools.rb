@@ -80,6 +80,7 @@ module VBO
 				@ip  = Sketchup::InputPoint.new
 				@ip1 = Sketchup::InputPoint.new
 				@ip2 = Sketchup::InputPoint.new
+				update_interactive_status
 				if VBO::ShapeForge.profile_dialog_visible?
 					VBO::ShapeForge.profile_dialog.temp_profile = @temp_profile
 					VBO::ShapeForge.profile_dialog.temp_profile.preview(VBO::ShapeForge.profile_dialog.dialog)
@@ -143,6 +144,7 @@ module VBO
 					@path = nil
 					@state = "pick"
 				end
+				update_interactive_status
 			end
 
 			def deactivate(view)
@@ -157,6 +159,8 @@ module VBO
 						VBO::ShapeForge.profile_dialog.run_script('clearCanvas();')
 					end
 				end
+				Sketchup::set_status_text "", SB_PROMPT
+				Sketchup::set_status_text "", SB_VCB_LABEL
 				#VBO::ShapeForge.save_last_junctions_style(@last_junctions_style)
 			end
 
@@ -742,6 +746,7 @@ module VBO
 						end
 					end
 				end
+				update_interactive_status
 			end
 
 			def onKeyDown(key, rpt, flags, view)
@@ -1258,6 +1263,40 @@ module VBO
 			end
 
 			private
+
+			def current_mode_label
+				case @state
+				when "click-click"
+					"Mode: #{(@sub_click || 'pick').capitalize}"
+				else
+					"Mode: Pick"
+				end
+			end
+
+			def current_mode_prompt
+				return nil unless @state == "click-click"
+
+				case @sub_click
+				when "extend"
+					"Extend along the original direction. Click to confirm. Tab: Moving."
+				when "moving"
+					"Move the selected cap or endpoint. Click to confirm. Tab: Extend."
+				when "append"
+					"Append a new segment from the current member. Click to confirm. Ctrl: Moving."
+				when "adjust"
+					"Adjust the selected junction point. Click to confirm."
+				when "draw"
+					"Draw the next segment. Click to confirm the point."
+				else
+					nil
+				end
+			end
+
+			def update_interactive_status
+				Sketchup::set_status_text current_mode_label, SB_VCB_LABEL
+				prompt = current_mode_prompt
+				Sketchup::set_status_text(prompt || "", SB_PROMPT)
+			end
 
 			def lock_axis(view, axis)
 				if view.inference_locked?
