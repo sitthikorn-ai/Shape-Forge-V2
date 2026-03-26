@@ -526,65 +526,19 @@ module VBO
 			model = Sketchup.active_model
 			sel = model.selection.to_a
 
-			# Filter to groups and component instances
 			targets = sel.select { |e|
 				(e.is_a?(Sketchup::Group) || e.is_a?(Sketchup::ComponentInstance)) &&
 				!VBO::ShapeForge::Identify.profile_member?(e)
 			}
 
 			if targets.empty?
-				UI.messagebox("Please select a Group or ComponentInstance to convert.")
+				UI.messagebox("Select a source Group or Component first, then click Object to Shape Forge.")
 				return
 			end
 
-			converted = 0
-			failed = []
-
-			targets.each do |entity|
-				result = detect_profile_and_path(entity)
-
-				if result.nil?
-					failed << entity
-					next
-				end
-
-				profile, chain_points = result
-
-				model.start_operation("Object to Shape Forge", true)
-				begin
-					parent_ents = entity.parent.entities
-					entity_trans = entity.transformation
-
-					# Create ForgeElement at the same location
-					pm = VBO::ShapeForge::ForgeElement.add(parent_ents, chain_points)
-					if pm
-						pm.set_from_profile!(profile)
-						entity.erase!
-						converted += 1
-					else
-						failed << entity
-					end
-					model.commit_operation
-				rescue => e
-					model.abort_operation
-					puts "Object to Shape Forge error: #{e.message}"
-					puts e.backtrace.first(5).join("\n")
-					failed << entity
-				end
-			end
-
-			# Fallback: activate pick tool for failed entities
-			if failed.any?
-				if UI.messagebox(
-					"Auto-detect failed for #{failed.length} object(s).\nWould you like to pick the profile face manually?",
-					MB_YESNO
-				) == IDYES
-					model.selection.clear
-					failed.each { |e| model.selection.add(e) if e.valid? }
-					tool = ObjectToForgeTool.new(failed.select(&:valid?))
-					model.tools.push_tool(tool)
-				end
-			end
+			model.selection.clear
+			targets.each { |entity| model.selection.add(entity) if entity.valid? }
+			model.tools.push_tool(ObjectToForgeTool.new(targets.select(&:valid?)))
 		end
 
 		def self.mid_point(a,b)

@@ -5513,19 +5513,24 @@ module VBO
 			include Geometry
 
 			def initialize(entities)
-				@entities = entities
-				@current_entity = entities.first
+				@entities = entities.select(&:valid?)
+				@current_entity = @entities.first
 				@highlight_face = nil
-				@highlight_color = Sketchup::Color.new(255, 100, 0, 80)
-				@edge_color = Sketchup::Color.new(255, 100, 0, 255)
+				@pick_path = nil
+				@pick_transformation = nil
+				@highlight_color = Sketchup::Color.new(80, 170, 255, 90)
+				@edge_color = Sketchup::Color.new(80, 170, 255, 255)
 			end
 
 			def activate
-				Sketchup.status_text = "Click a face to use as the cross-section profile. Press Esc to cancel."
+				Sketchup::set_status_text("Mode: Object To Shape Forge", SB_VCB_LABEL)
+				Sketchup::set_status_text("Hover a face to preview the profile, then click the face to convert the selected object. Esc to cancel.", SB_PROMPT)
 				Sketchup.active_model.active_view.invalidate
 			end
 
 			def deactivate(view)
+				Sketchup::set_status_text "", SB_PROMPT
+				Sketchup::set_status_text "", SB_VCB_LABEL
 				view.invalidate
 			end
 
@@ -5541,13 +5546,18 @@ module VBO
 						@highlight_face = best
 						@pick_path = path
 						@pick_transformation = Sketchup::InstancePath.new(path).transformation
+						view.tooltip = "Click face to convert object to Shape Forge"
 					else
 						@highlight_face = nil
 						@pick_path = nil
+						@pick_transformation = nil
+						view.tooltip = nil
 					end
 				else
 					@highlight_face = nil
 					@pick_path = nil
+					@pick_transformation = nil
+					view.tooltip = nil
 				end
 				view.invalidate
 			end
@@ -5675,7 +5685,11 @@ module VBO
 					Sketchup.active_model.tools.pop_tool
 				else
 					@current_entity = @entities.first
-					Sketchup.status_text = "Click a face to use as the cross-section profile. #{@entities.length} object(s) remaining. Press Esc to cancel."
+					@highlight_face = nil
+					@pick_path = nil
+					@pick_transformation = nil
+					Sketchup::set_status_text("Mode: Object To Shape Forge", SB_VCB_LABEL)
+					Sketchup::set_status_text("Hover a face to preview the profile, then click the face to convert. #{@entities.length} object(s) remaining. Esc to cancel.", SB_PROMPT)
 					view.invalidate
 				end
 			end
