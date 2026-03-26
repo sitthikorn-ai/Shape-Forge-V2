@@ -5541,7 +5541,8 @@ module VBO
 				ip = view.inputpoint(x, y)
 				if ip.valid? && ip.face
 					candidate_path = ip.instance_path.to_a
-					if candidate_path.any? { |p| @entities.include?(p) }
+					entity = candidate_path.find { |p| @entities.include?(p) }
+					if entity && valid_profile_face?(entity, ip.face, entity.transformation)
 						face = ip.face
 						path = candidate_path
 					end
@@ -5555,7 +5556,9 @@ module VBO
 						next unless candidate_path
 						candidate_face = candidate_path.reverse.find { |p| p.is_a?(Sketchup::Face) }
 						next unless candidate_face
-						next unless candidate_path.to_a.any? { |p| @entities.include?(p) }
+						entity = candidate_path.find { |p| @entities.include?(p) }
+						next unless entity
+						next unless valid_profile_face?(entity, candidate_face, entity.transformation)
 						face = candidate_face
 						path = candidate_path
 						break
@@ -5582,6 +5585,7 @@ module VBO
 				# Find which target entity this face belongs to
 				entity = @pick_path.to_a.find { |p| @entities.include?(p) }
 				return unless entity
+				return unless valid_profile_face?(entity, @highlight_face, entity.transformation)
 
 				trans = entity.transformation
 				face = @highlight_face
@@ -5670,6 +5674,10 @@ module VBO
 						candidate_center = face_center_world(candidate, trans)
 						profile_center.distance(candidate_center)
 					}
+			end
+
+			def valid_profile_face?(entity, face, trans)
+				!find_opposite_face(entity, face, trans).nil?
 			end
 
 			def build_chain_points_for_entity(entity, profile_face, trans)
