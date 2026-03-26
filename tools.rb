@@ -5699,10 +5699,16 @@ module VBO
 				candidates = faces.map { |face|
 					opposite_face = find_opposite_face(entity, face, trans)
 					next if opposite_face.nil?
+					loop_vertex_count = face.loops.reduce(0) { |sum, loop| sum + loop.vertices.length }
 					{
 						face: face,
 						opposite_face: opposite_face,
-						center: face_center_world(face, trans)
+						center: face_center_world(face, trans),
+						score: [
+							loop_vertex_count,
+							face.area,
+							face_center_world(face, trans).distance(face_center_world(opposite_face, trans))
+						]
 					}
 				}.compact
 				candidates.uniq { |item|
@@ -5716,9 +5722,7 @@ module VBO
 
 				exact = profiles.find { |item| item[:face] == hovered_face }
 				return exact if exact
-
-				hover_center = face_center_world(hovered_face, trans)
-				profiles.min_by { |item| item[:center].distance(hover_center) }
+				profiles.max_by { |item| item[:score] }
 			end
 
 			def find_opposite_face(entity, profile_face, trans)
