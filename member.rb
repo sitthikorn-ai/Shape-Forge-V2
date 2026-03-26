@@ -636,6 +636,8 @@ module VBO::ShapeForge
 			pm = ForgeElement.add(entities,new_chain.path)
 			pm.name = self.instance.name
 			copy_attributes_to(pm.instance)
+			self.smooth_angle = 20.0
+			pm.smooth_angle = 20.0
 			case type
 			when "normal"
 				set_chain(paths[0])
