@@ -559,14 +559,16 @@ module VBO
 			profile.junction_style = profiles.first.junction_style
 			profile.extrude_mode = profiles.first.extrude_mode
 
-			segments = members.map { |pm|
+			chains = members.map { |pm|
 				inst = pm.instance
-				pm.chain.path.map { |pt| pt.transform(inst.transformation) }.each_cons(2).to_a
+				pm.chain.path.map { |pt| pt.transform(inst.transformation) }
 			}
+			segments = chains.map { |chain| chain.each_cons(2).to_a }
 
 			graph = VBO::ShapeForge::Graph.new(segments.flatten(1))
 			simplified = graph.create_graph_from_simplified_graph(graph.simply_graph)
 			paths = simplified.merge_edges_to_polylines(simplified.edges)
+			paths = [auto_join_member_chains(chains[0], chains[1])] if paths.length != 1 || paths[0].length < 2
 
 			if paths.length != 1 || paths[0].length < 2
 				UI.messagebox("These 2 Shape Forge members could not be joined into one continuous path.")
@@ -592,6 +594,42 @@ module VBO
 				puts e.backtrace.first(5).join("\n")
 				UI.messagebox("Could not join the selected Shape Forge members.")
 			end
+		end
+
+		def self.auto_join_member_chains(chain_a, chain_b, tolerance = 1.mm)
+			return nil unless chain_a.is_a?(Array) && chain_b.is_a?(Array)
+			return nil if chain_a.length < 2 || chain_b.length < 2
+
+			pairs = [
+				[0, 0, chain_a.first.distance(chain_b.first)],
+				[0, 1, chain_a.first.distance(chain_b.last)],
+				[1, 0, chain_a.last.distance(chain_b.first)],
+				[1, 1, chain_a.last.distance(chain_b.last)]
+			]
+			end_a, end_b, distance = pairs.min_by { |item| item[2] }
+
+			joined_a = end_a == 0 ? chain_a.reverse : chain_a.clone
+			joined_b = end_b == 1 ? chain_b.reverse : chain_b.clone
+
+			path = joined_a.dup
+			if distance <= tolerance
+				path.concat(joined_b[1..-1] || [])
+			else
+				path.concat(joined_b)
+			end
+
+			clean_chain_points(path, tolerance)
+		end
+
+		def self.clean_chain_points(points, tolerance = 1.mm)
+			return [] unless points.is_a?(Array)
+			cleaned = []
+			points.each do |pt|
+				next unless pt.respond_to?(:distance)
+				next if cleaned.any? && cleaned.last.distance(pt) <= tolerance
+				cleaned << pt
+			end
+			cleaned
 		end
 
 		def self.mid_point(a,b)
