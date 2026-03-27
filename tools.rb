@@ -5605,18 +5605,15 @@ module VBO
 				entity_path = path_to_entity(click_path, entity)
 				trans ||= entity_transformation(entity_path, entity)
 				source_face = click_face || @hover_face || @highlight_face
-				candidate = if source_face
-					opposite_face = find_opposite_face(entity, source_face, trans)
-					if opposite_face
-						{ face: source_face, opposite_face: opposite_face }
-					else
-						profile_candidate_for(entity, source_face, trans)
-					end
-				end
-				return unless candidate && candidate[:face]
+				return unless source_face
 
-				face = candidate[:face]
-				opposite_face = candidate[:opposite_face]
+				opposite_face = find_opposite_face(entity, source_face, trans)
+				unless opposite_face
+					UI.messagebox("Click an end/profile face to convert this object.")
+					return
+				end
+
+				face = source_face
 
 				# Create profile from selected face
 				profile = VBO::ShapeForge::Shape.new(face)
