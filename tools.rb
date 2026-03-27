@@ -5688,21 +5688,38 @@ module VBO
 						next unless valid_vector?(b_dir)
 
 						meet = Geom.intersect_line_line([a_end, a_dir], [b_start, b_dir])
-						next unless meet
-						next unless extension_forward?(a_end, a_dir, meet)
-						next unless extension_forward?(b_start, b_dir, meet)
+						raw_path = nil
+						join_index = nil
+						score = nil
 
-						raw_path = clean_path(oriented_a[0...-1] + [meet] + (oriented_b[1..-1] || []))
-						next if raw_path.length < 2
+						if meet
+							next unless extension_forward?(a_end, a_dir, meet)
+							next unless extension_forward?(b_start, b_dir, meet)
 
-						join_index = raw_path.index { |pt| pt.distance(meet) <= 1.mm } || (raw_path.length / 2)
+							raw_path = clean_path(oriented_a[0...-1] + [meet] + (oriented_b[1..-1] || []))
+							next if raw_path.length < 2
+
+							join_index = raw_path.index { |pt| pt.distance(meet) <= 1.mm } || (raw_path.length / 2)
+							score = a_end.distance(meet) + b_start.distance(meet)
+						elsif a_dir.parallel?(b_dir) && collinear_join?(a_end, a_dir, b_start, b_dir)
+							next unless extension_forward?(a_end, a_dir, b_start)
+							next unless extension_forward?(b_start, b_dir, a_end)
+
+							raw_path = clean_path(oriented_a + (oriented_b[1..-1] || []))
+							next if raw_path.length < 2
+
+							join_index = raw_path.index { |pt| pt.distance(b_start) <= 1.mm } || (oriented_a.length - 1)
+							score = a_end.distance(b_start)
+						else
+							next
+						end
+
 						next if join_index <= 0 || join_index >= raw_path.length - 1
 
 						signature = path_signature(raw_path)
 						next if seen[signature]
 						seen[signature] = true
 
-						score = a_end.distance(meet) + b_start.distance(meet)
 						candidates << {
 							raw_path: raw_path,
 							join_indices: [join_index],
@@ -5931,6 +5948,14 @@ module VBO
 				vec = origin.vector_to(target)
 				return true if vec.length <= 1.mm
 				direction.dot(vec) >= -1.mm
+			end
+
+			def collinear_join?(origin_a, dir_a, origin_b, dir_b, tolerance = 1.mm)
+				return false unless origin_a && dir_a && origin_b && dir_b
+				return false unless dir_a.parallel?(dir_b)
+				offset = origin_a.vector_to(origin_b)
+				return true if offset.length <= tolerance
+				offset.parallel?(dir_a)
 			end
 
 			def clean_path(points)
