@@ -600,6 +600,9 @@ module VBO
 			return nil unless chain_a.is_a?(Array) && chain_b.is_a?(Array)
 			return nil if chain_a.length < 2 || chain_b.length < 2
 
+			joined_by_extension = join_member_chains_by_extension(chain_a, chain_b, tolerance)
+			return joined_by_extension if joined_by_extension && joined_by_extension.length >= 2
+
 			pairs = [
 				[0, 0, chain_a.first.distance(chain_b.first)],
 				[0, 1, chain_a.first.distance(chain_b.last)],
@@ -619,6 +622,67 @@ module VBO
 			end
 
 			clean_chain_points(path, tolerance)
+		end
+
+		def self.join_member_chains_by_extension(chain_a, chain_b, tolerance = 1.mm)
+			candidates_a = [
+				chain_a.clone,
+				chain_a.reverse
+			]
+			candidates_b = [
+				chain_b.clone,
+				chain_b.reverse
+			]
+
+			best = nil
+
+			candidates_a.each do |oriented_a|
+				next if oriented_a.length < 2
+				a_end = oriented_a.last
+				a_dir = oriented_a[-2].vector_to(oriented_a[-1])
+				next if a_dir.length <= tolerance
+
+				candidates_b.each do |oriented_b|
+					next if oriented_b.length < 2
+					b_start = oriented_b.first
+					b_dir = oriented_b[1].vector_to(oriented_b[0])
+					next if b_dir.length <= tolerance
+
+					line_a = [a_end, a_dir]
+					line_b = [b_start, b_dir]
+
+					meet = Geom.intersect_line_line(line_a, line_b)
+					point_a = meet
+					point_b = meet
+
+					if meet.nil?
+						closest = Geom.closest_points(line_a, line_b) rescue nil
+						next unless closest && closest.length == 2
+						point_a, point_b = closest
+						meet = Geom.linear_combination(0.5, point_a, 0.5, point_b)
+					end
+
+					next unless point_a && point_b && meet
+					next unless extension_forward?(a_end, a_dir, point_a, tolerance)
+					next unless extension_forward?(b_start, b_dir, point_b, tolerance)
+
+					score = point_a.distance(point_b) + a_end.distance(point_a) + b_start.distance(point_b)
+					path = oriented_a[0...-1] + [meet] + (oriented_b[1..-1] || [])
+					path = clean_chain_points(path, tolerance)
+					next if path.length < 2
+
+					best = [score, path] if best.nil? || score < best[0]
+				end
+			end
+
+			best ? best[1] : nil
+		end
+
+		def self.extension_forward?(origin, direction, target, tolerance = 1.mm)
+			return false unless origin && direction && target
+			vec = origin.vector_to(target)
+			return true if vec.length <= tolerance
+			direction.dot(vec) >= -tolerance
 		end
 
 		def self.clean_chain_points(points, tolerance = 1.mm)
