@@ -5598,13 +5598,13 @@ module VBO
 
 			def onLButtonDown(flags, x, y, view)
 				return unless (@hover_face || @highlight_face) && @pick_path
-
-				# Find which target entity this face belongs to
-				entity = @pick_path.to_a.find { |p| @entities.include?(p) }
+				click_face, click_path, entity, trans = pick_face_for_object_to_forge(x, y, view)
+				entity ||= @pick_path.to_a.find { |p| @entities.include?(p) }
 				return unless entity
-				entity_path = path_to_entity(@pick_path.to_a, entity)
-				trans = entity_transformation(entity_path, entity)
-				source_face = @hover_face || @highlight_face
+				click_path ||= @pick_path.to_a
+				entity_path = path_to_entity(click_path, entity)
+				trans ||= entity_transformation(entity_path, entity)
+				source_face = click_face || @hover_face || @highlight_face
 				candidate = if source_face
 					opposite_face = find_opposite_face(entity, source_face, trans)
 					if opposite_face
@@ -5662,6 +5662,35 @@ module VBO
 					Sketchup::set_status_text("Hover a face to preview the profile, then click the face to convert. #{@entities.length} object(s) remaining. Esc to cancel.", SB_PROMPT)
 					view.invalidate
 				end
+			end
+
+			def pick_face_for_object_to_forge(x, y, view)
+				ip = view.inputpoint(x, y)
+				if ip.valid? && ip.face
+					candidate_path = ip.instance_path.to_a
+					entity = candidate_path.find { |p| @entities.include?(p) }
+					if entity
+						entity_path = path_to_entity(candidate_path, entity)
+						trans = entity_transformation(entity_path, entity)
+						return [ip.face, candidate_path, entity, trans]
+					end
+				end
+
+				ph = view.pick_helper
+				ph.do_pick(x, y)
+				0.upto(ph.count - 1) do |i|
+					candidate_path = ph.path_at(i)
+					next unless candidate_path
+					candidate_face = candidate_path.reverse.find { |p| p.is_a?(Sketchup::Face) }
+					next unless candidate_face
+					entity = candidate_path.find { |p| @entities.include?(p) }
+					next unless entity
+					entity_path = path_to_entity(candidate_path, entity)
+					trans = entity_transformation(entity_path, entity)
+					return [candidate_face, candidate_path, entity, trans]
+				end
+
+				[nil, nil, nil, nil]
 			end
 
 			def draw(view)
