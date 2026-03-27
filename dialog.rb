@@ -507,6 +507,7 @@ module VBO::ShapeForge
                 "'path_functions:join-normal'",
                 "'path_functions:join-miter'",
                 "'path_functions:join-butt'",
+                "'joint_shape_forge'",
               ]
             end
 
