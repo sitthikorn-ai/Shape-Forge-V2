@@ -168,6 +168,8 @@ class VBO::ShapeForge::Dialog1
       Sketchup.active_model.selection.add @active_members
     when 'object_to_forge'
       VBO::ShapeForge.object_to_shape_forge
+    when 'joint_shape_forge'
+      VBO::ShapeForge.joint_shape_forge
     when 'pinned'
       #puts command, value
       options.pinned = value

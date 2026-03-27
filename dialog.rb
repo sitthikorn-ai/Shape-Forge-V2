@@ -538,7 +538,7 @@ module VBO::ShapeForge
 
               w2ui.profile_toolbar.disable('append', 'apply', 'apply_flask', 'select_apply', 'project_profile', 'edit_profile');
 
-              w2ui.member_toolbar.disable('split', 'path_functions','project_member');
+              w2ui.member_toolbar.disable('split', 'path_functions','project_member', 'joint_shape_forge');
             })
             if Sketchup.active_model.selection.to_a.any?{|e| e.is_a?(Sketchup::Edge) || e.is_a?(Sketchup::Face)}
               run_script(%Q{
@@ -566,6 +566,7 @@ module VBO::ShapeForge
                 "'path_functions:join-normal'",
                 "'path_functions:join-miter'",
                 "'path_functions:join-butt'",
+                "'joint_shape_forge'",
               ]
             end
             run_script(%Q{
@@ -576,7 +577,7 @@ module VBO::ShapeForge
               $('#selective').css('display','none');
              w2ui.member_toolbar.enable('select_member');
 
-              w2ui.member_toolbar.disable('split', 'path_functions','project_member');
+              w2ui.member_toolbar.disable('split', 'path_functions','project_member', 'joint_shape_forge');
             })
           end
         end
@@ -588,7 +589,7 @@ module VBO::ShapeForge
         @no_profile.preview(@dialog, nil, '#ff0000')
         run_script(%Q{
           //clearCanvas();
-          w2ui.member_toolbar.disable('split', 'path_functions','select_member', 'project_member');
+          w2ui.member_toolbar.disable('split', 'path_functions','select_member', 'project_member', 'joint_shape_forge');
           w2ui.settings.disable('save');
           //$('#selective').css('display','none');
           //w2ui.member_toolbar.enable('select_member');

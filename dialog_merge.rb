@@ -317,6 +317,14 @@ module VBO::ShapeForge
             tooltip: 'Object to Shape Forge'
           },
           {
+            type: 'button',
+            id: 'joint_shape_forge',
+            text: '',
+            icon: 'fa fa-link',
+            tooltip: 'Joint Shape Forge',
+            disabled: true
+          },
+          {
             type: 'break'
           },
           {
