@@ -544,56 +544,7 @@ module VBO
 		def self.joint_shape_forge
 			model = Sketchup.active_model
 			members = selection_members(model.selection.to_a)
-			if members.length != 2
-				UI.messagebox("Select exactly 2 Shape Forge members with the same profile.")
-				return
-			end
-
-			profiles = members.map(&:profile)
-			unless profiles[0].to_s == profiles[1].to_s
-				UI.messagebox("Selected Shape Forge members must use the same profile.")
-				return
-			end
-
-			profile = profiles.first.clone
-			profile.junction_style = profiles.first.junction_style
-			profile.extrude_mode = profiles.first.extrude_mode
-
-			chains = members.map { |pm|
-				inst = pm.instance
-				pm.chain.path.map { |pt| pt.transform(inst.transformation) }
-			}
-			segments = chains.map { |chain| chain.each_cons(2).to_a }
-
-			graph = VBO::ShapeForge::Graph.new(segments.flatten(1))
-			simplified = graph.create_graph_from_simplified_graph(graph.simply_graph)
-			paths = simplified.merge_edges_to_polylines(simplified.edges)
-			paths = [auto_join_member_chains(chains[0], chains[1])] if paths.length != 1 || paths[0].length < 2
-
-			if paths.length != 1 || paths[0].length < 2
-				UI.messagebox("These 2 Shape Forge members could not be joined into one continuous path.")
-				return
-			end
-
-			model.start_operation("ShapeForge - Joint Shape Forge", true)
-			begin
-				parent_ents = model.active_entities
-				new_member = VBO::ShapeForge::ForgeElement.add(parent_ents, paths[0])
-				if new_member
-					new_member.set_from_profile!(profile)
-					old_instances = members.map(&:instance).uniq
-					old_instances.each { |inst| inst.erase! if inst&.valid? }
-					model.selection.clear
-					model.selection.add(new_member.instance) if new_member.instance&.valid?
-				end
-				model.commit_operation
-				VBO::ShapeForge.manager_need_reload
-			rescue => e
-				model.abort_operation
-				puts "Joint Shape Forge error: #{e.message}"
-				puts e.backtrace.first(5).join("\n")
-				UI.messagebox("Could not join the selected Shape Forge members.")
-			end
+			model.tools.push_tool(VBO::ShapeForge::JointShapeForgeTool.new(members))
 		end
 
 		def self.auto_join_member_chains(chain_a, chain_b, tolerance = 1.mm)

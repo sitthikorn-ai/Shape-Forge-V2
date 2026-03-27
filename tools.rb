@@ -5509,6 +5509,483 @@ module VBO
 			end
 		end
 
+		class JointShapeForgeTool
+			include Geometry
+
+			TOLERANCE = 1e-4
+
+			def initialize(members)
+				@members = members.select { |pm| pm && pm.instance&.valid? }
+				@candidates = []
+				@current_index = 0
+				@corner_mode = :none
+				@fillet_radius = 1.0
+				@fillet_segments = 8
+				@chamfer_dist = 1.0
+				@profile = nil
+				@valid = false
+			end
+
+			def activate
+				if prepare_candidates
+					@valid = true
+					update_status_bar
+					Sketchup.active_model.active_view.invalidate
+				else
+					Sketchup.active_model.tools.pop_tool
+				end
+			end
+
+			def deactivate(view)
+				clear_status_bar
+				view.invalidate
+			end
+
+			def resume(view)
+				update_status_bar
+				view.invalidate
+			end
+
+			def onCancel(reason, view)
+				Sketchup.active_model.tools.pop_tool
+			end
+
+			def onKeyDown(key, repeat, flags, view)
+				return false unless @valid
+
+				if key == 9 || key == 15
+					if @candidates.length > 1
+						@current_index = (@current_index + 1) % @candidates.length
+						update_status_bar
+						view.invalidate
+					end
+					return true
+				end
+
+				if key == 17
+					case @corner_mode
+					when :none
+						@corner_mode = :fillet
+					when :fillet
+						@corner_mode = :chamfer
+					else
+						@corner_mode = :none
+					end
+					update_status_bar
+					view.invalidate
+					return true
+				end
+
+				false
+			end
+
+			def onUserText(text, view)
+				return unless @valid
+
+				case @corner_mode
+				when :fillet
+					if text =~ /^\s*([\d.]+)\s*,\s*(\d+)\s*s?\s*$/i
+						r = text.split(",")[0].strip.to_l rescue nil
+						s = Regexp.last_match(2).to_i
+						@fillet_radius = r if r && r > TOLERANCE
+						@fillet_segments = [s, 2].max if s > 0
+					elsif text =~ /^\s*(\d+)\s*s\s*$/i
+						s = Regexp.last_match(1).to_i
+						@fillet_segments = [s, 2].max if s > 0
+					else
+						begin
+							r = text.strip.to_l
+							@fillet_radius = r if r > TOLERANCE
+						rescue
+						end
+					end
+				when :chamfer
+					begin
+						d = text.strip.to_l
+						@chamfer_dist = d if d > TOLERANCE
+					rescue
+					end
+				end
+
+				update_status_bar
+				view.invalidate
+			end
+
+			def onLButtonDown(flags, x, y, view)
+				return unless @valid
+				commit_current_candidate
+			end
+
+			def draw(view)
+				return unless @valid && current_candidate
+
+				path = build_modified_path(current_candidate)
+				return if path.length < 2
+
+				draw_preview_member(view, path)
+				draw_preview_path(view, path, current_candidate)
+			end
+
+			def getExtents
+				bb = Geom::BoundingBox.new
+				if current_candidate
+					build_modified_path(current_candidate).each { |pt| bb.add(pt) }
+				end
+				@members.each do |pm|
+					inst = pm.instance
+					bb.add(inst.bounds) if inst&.valid?
+				end
+				bb
+			end
+
+			private
+
+			def prepare_candidates
+				if @members.length != 2
+					UI.messagebox("Select exactly 2 Shape Forge members with the same profile.")
+					return false
+				end
+
+				profiles = @members.map(&:profile)
+				unless profiles[0].to_s == profiles[1].to_s
+					UI.messagebox("Selected Shape Forge members must use the same profile.")
+					return false
+				end
+
+				@profile = profiles.first.clone
+				@profile.junction_style = profiles.first.junction_style
+				@profile.extrude_mode = profiles.first.extrude_mode
+
+				chains = @members.map do |pm|
+					inst = pm.instance
+					pm.chain.path.map { |pt| pt.transform(inst.transformation) }
+				end
+
+				@candidates = generate_candidates(chains[0], chains[1])
+				if @candidates.empty?
+					UI.messagebox("No valid Joint Shape Forge path found from the current member directions.")
+					return false
+				end
+
+				@current_index = 0
+				true
+			end
+
+			def generate_candidates(chain_a, chain_b)
+				candidates = []
+				seen = {}
+
+				[chain_a.clone, chain_a.reverse].each do |oriented_a|
+					next if oriented_a.length < 2
+					a_end = oriented_a.last
+					a_dir = oriented_a[-2].vector_to(oriented_a[-1])
+					next unless valid_vector?(a_dir)
+
+					[chain_b.clone, chain_b.reverse].each do |oriented_b|
+						next if oriented_b.length < 2
+						b_start = oriented_b.first
+						b_dir = oriented_b[1].vector_to(oriented_b[0])
+						next unless valid_vector?(b_dir)
+
+						meet = Geom.intersect_line_line([a_end, a_dir], [b_start, b_dir])
+						next unless meet
+						next unless extension_forward?(a_end, a_dir, meet)
+						next unless extension_forward?(b_start, b_dir, meet)
+
+						raw_path = clean_path(oriented_a[0...-1] + [meet] + (oriented_b[1..-1] || []))
+						next if raw_path.length < 2
+
+						join_index = raw_path.index { |pt| pt.distance(meet) <= 1.mm } || (raw_path.length / 2)
+						next if join_index <= 0 || join_index >= raw_path.length - 1
+
+						signature = path_signature(raw_path)
+						next if seen[signature]
+						seen[signature] = true
+
+						score = a_end.distance(meet) + b_start.distance(meet)
+						candidates << {
+							raw_path: raw_path,
+							join_indices: [join_index],
+							score: score
+						}
+					end
+				end
+
+				candidates.sort_by { |item| item[:score] }
+			end
+
+			def current_candidate
+				@candidates[@current_index]
+			end
+
+			def build_modified_path(candidate)
+				path = candidate[:raw_path]
+				return path if @corner_mode == :none
+				return path if path.length < 3
+
+				segments = []
+				(0...(path.length - 1)).each do |i|
+					segments << path[i].vector_to(path[i + 1])
+				end
+				seg_lengths = segments.map { |seg| seg.valid? ? seg.length : 0.0 }
+
+				corner_data = {}
+				candidate[:join_indices].each do |index|
+					next unless index > 0 && index < path.length - 1
+					dir_in = segments[index - 1]
+					dir_out = segments[index]
+					next unless dir_in.valid? && dir_out.valid?
+					next if dir_in.parallel?(dir_out)
+
+					len_before = seg_lengths[index - 1]
+					len_after = seg_lengths[index]
+
+					case @corner_mode
+					when :fillet
+						r = @fillet_radius
+						dot = [[-1.0, dir_in.normalize.dot(dir_out.normalize)].max, 1.0].min
+						angle = Math.acos(dot)
+						half_angle = angle / 2.0
+						next if half_angle.abs < 1e-6 || (Math::PI - half_angle).abs < 1e-6
+						tan_half = Math.tan(half_angle)
+						next if tan_half.abs < 1e-10
+						trim = r / tan_half
+						max_trim = [len_before, len_after].min * 0.499
+						if trim > max_trim
+							trim = max_trim
+							r = trim * tan_half
+						end
+						corner_data[index] = compute_fillet(path[index], dir_in, dir_out, r, trim, @fillet_segments)
+					when :chamfer
+						dist = [@chamfer_dist, [len_before, len_after].min * 0.499].min
+						corner_data[index] = compute_chamfer(path[index], dir_in, dir_out, dist)
+					end
+				end
+
+				result = []
+				(0...path.length).each do |index|
+					if corner_data[index]
+						corner_data[index].each { |pt| result << pt }
+					else
+						result << path[index]
+					end
+				end
+				clean_path(result)
+			end
+
+			def compute_fillet(corner, dir_in, dir_out, radius, trim, segments)
+				d_in = dir_in.normalize
+				d_out = dir_out.normalize
+
+				trim_in = Geom::Point3d.new(
+					corner.x - d_in.x * trim,
+					corner.y - d_in.y * trim,
+					corner.z - d_in.z * trim
+				)
+				trim_out = Geom::Point3d.new(
+					corner.x + d_out.x * trim,
+					corner.y + d_out.y * trim,
+					corner.z + d_out.z * trim
+				)
+
+				bisector = Geom::Vector3d.new(
+					d_out.x - d_in.x,
+					d_out.y - d_in.y,
+					d_out.z - d_in.z
+				)
+				return [trim_in, trim_out] unless bisector.valid?
+
+				bisector.normalize!
+				dot = [[-1.0, d_in.dot(d_out)].max, 1.0].min
+				angle = Math.acos(dot)
+				half_angle = angle / 2.0
+				sin_half = Math.sin(half_angle)
+				return [trim_in, trim_out] if sin_half.abs < 1e-10
+				center_dist = radius / sin_half
+
+				center = Geom::Point3d.new(
+					corner.x + bisector.x * center_dist,
+					corner.y + bisector.y * center_dist,
+					corner.z + bisector.z * center_dist
+				)
+
+				v_start = Geom::Vector3d.new(trim_in.x - center.x, trim_in.y - center.y, trim_in.z - center.z)
+				v_end = Geom::Vector3d.new(trim_out.x - center.x, trim_out.y - center.y, trim_out.z - center.z)
+				arc_normal = v_start.cross(v_end)
+				return [trim_in, trim_out] unless arc_normal.valid?
+				arc_normal.normalize!
+
+				dot_arc = v_start.dot(v_end) / (v_start.length * v_end.length)
+				dot_arc = [[-1.0, dot_arc].max, 1.0].min
+				sweep = Math.acos(dot_arc)
+
+				points = [trim_in]
+				(1...segments).each do |step|
+					frac = step.to_f / segments
+					ang = sweep * frac
+					rotated = rotate_vector(v_start, arc_normal, ang)
+					points << Geom::Point3d.new(center.x + rotated.x, center.y + rotated.y, center.z + rotated.z)
+				end
+				points << trim_out
+				points
+			end
+
+			def compute_chamfer(corner, dir_in, dir_out, dist)
+				d_in = dir_in.normalize
+				d_out = dir_out.normalize
+				trim_in = Geom::Point3d.new(
+					corner.x - d_in.x * dist,
+					corner.y - d_in.y * dist,
+					corner.z - d_in.z * dist
+				)
+				trim_out = Geom::Point3d.new(
+					corner.x + d_out.x * dist,
+					corner.y + d_out.y * dist,
+					corner.z + d_out.z * dist
+				)
+				[trim_in, trim_out]
+			end
+
+			def rotate_vector(v, axis, angle)
+				c = Math.cos(angle)
+				s = Math.sin(angle)
+				dot = v.x * axis.x + v.y * axis.y + v.z * axis.z
+				cx = axis.y * v.z - axis.z * v.y
+				cy = axis.z * v.x - axis.x * v.z
+				cz = axis.x * v.y - axis.y * v.x
+				Geom::Vector3d.new(
+					v.x * c + cx * s + axis.x * dot * (1 - c),
+					v.y * c + cy * s + axis.y * dot * (1 - c),
+					v.z * c + cz * s + axis.z * dot * (1 - c)
+				)
+			end
+
+			def draw_preview_member(view, path)
+				profile = @profile.clone
+				profile.set_from_profile_member(@members.first)
+				trans = VBO::ShapeForge::ForgeElement.default_transformation(path)
+				extruder = Extruder.new(path, profile, trans)
+				view.drawing_color = Sketchup::Color.new(220, 60, 60)
+				extruder.draw_view(0, -1, view, trans)
+			rescue => e
+				puts "Joint Shape Forge preview error: #{e.message}"
+			end
+
+			def draw_preview_path(view, path, candidate)
+				view.line_width = 3
+				view.line_stipple = ""
+				view.drawing_color = Sketchup::Color.new(220, 50, 50)
+				(0...(path.length - 1)).each do |i|
+					view.draw(GL_LINES, [path[i], path[i + 1]])
+				end
+				view.draw_points([path.first, path.last], 10, 2, Sketchup::Color.new(0, 200, 80))
+
+				join_points = candidate[:join_indices].map { |index|
+					path[[index, path.length - 2].min]
+				}.compact
+				view.draw_points(join_points, 12, 2, Sketchup::Color.new(240, 200, 0)) if join_points.any?
+			end
+
+			def commit_current_candidate
+				path = build_modified_path(current_candidate)
+				return if path.length < 2
+
+				model = Sketchup.active_model
+				model.start_operation("ShapeForge - Joint Shape Forge", true)
+				begin
+					parent_ents = common_parent_entities(model)
+					new_member = VBO::ShapeForge::ForgeElement.add(parent_ents, path)
+					if new_member
+						profile = @profile.clone
+						new_member.set_from_profile!(profile)
+						old_instances = @members.map(&:instance).uniq
+						old_instances.each { |inst| inst.erase! if inst&.valid? }
+						model.selection.clear
+						model.selection.add(new_member.instance) if new_member.instance&.valid?
+					end
+					model.commit_operation
+					VBO::ShapeForge.manager_need_reload
+					model.tools.pop_tool
+				rescue => e
+					model.abort_operation
+					puts "Joint Shape Forge tool error: #{e.message}"
+					puts e.backtrace.first(5).join("\n")
+					UI.messagebox("Could not join the selected Shape Forge members.")
+				end
+			end
+
+			def common_parent_entities(model)
+				parents = @members.map { |pm| pm.instance.parent }.uniq
+				if parents.length == 1 && parents.first.respond_to?(:entities)
+					parents.first.entities
+				else
+					model.active_entities
+				end
+			end
+
+			def valid_vector?(vector)
+				vector && vector.valid? && vector.length > 1.mm
+			end
+
+			def extension_forward?(origin, direction, target)
+				vec = origin.vector_to(target)
+				return true if vec.length <= 1.mm
+				direction.dot(vec) >= -1.mm
+			end
+
+			def clean_path(points)
+				cleaned = []
+				points.each do |pt|
+					next unless pt.respond_to?(:distance)
+					next if cleaned.any? && cleaned.last.distance(pt) <= 1.mm
+					cleaned << pt
+				end
+				cleaned
+			end
+
+			def path_signature(path)
+				path.map { |pt| [pt.x.round(6), pt.y.round(6), pt.z.round(6)] }
+			end
+
+			def update_status_bar
+				count = @candidates.length
+				index = @current_index + 1
+				prompt = if count > 1
+					"Joint Shape Forge: Path #{index}/#{count}. Tab: Next Path | Ctrl: Fillet/Chamfer | Click: Accept | Esc: Cancel"
+				else
+					"Joint Shape Forge: 1 path. Ctrl: Fillet/Chamfer | Click: Accept | Esc: Cancel"
+				end
+
+				value = case @corner_mode
+				when :fillet
+					"Fillet R=#{@fillet_radius} S=#{@fillet_segments}"
+				when :chamfer
+					"Chamfer D=#{@chamfer_dist}"
+				else
+					"Corner: None"
+				end
+
+				Sketchup::set_status_text(prompt, SB_PROMPT)
+				case @corner_mode
+				when :fillet
+					Sketchup::set_status_text("Fillet (R,Ns):", SB_VCB_LABEL)
+					Sketchup::set_status_text("#{@fillet_radius},#{@fillet_segments}s", SB_VCB_VALUE)
+				when :chamfer
+					Sketchup::set_status_text("Chamfer (D):", SB_VCB_LABEL)
+					Sketchup::set_status_text(@chamfer_dist.to_s, SB_VCB_VALUE)
+				else
+					Sketchup::set_status_text("Mode: Joint Shape Forge", SB_VCB_LABEL)
+					Sketchup::set_status_text(value, SB_VCB_VALUE)
+				end
+			end
+
+			def clear_status_bar
+				Sketchup::set_status_text("", SB_PROMPT)
+				Sketchup::set_status_text("", SB_VCB_LABEL)
+				Sketchup::set_status_text("", SB_VCB_VALUE)
+			end
+		end
+
 		class ObjectToForgeTool
 			include Geometry
 
