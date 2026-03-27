@@ -5524,14 +5524,14 @@ module VBO
 			end
 
 			def activate
-				Sketchup::set_status_text("Mode: Object To Shape Forge", SB_VCB_LABEL)
-				Sketchup::set_status_text("Hover a face to preview the profile, then click the face to convert the selected object. Esc to cancel.", SB_PROMPT)
+				update_object_to_forge_status
 				Sketchup.active_model.active_view.invalidate
 			end
 
 			def deactivate(view)
 				Sketchup::set_status_text "", SB_PROMPT
 				Sketchup::set_status_text "", SB_VCB_LABEL
+				Sketchup::set_status_text "", SB_VCB_VALUE
 				view.invalidate
 			end
 
@@ -5593,6 +5593,7 @@ module VBO
 					@pick_transformation = nil
 					view.tooltip = nil
 				end
+				update_object_to_forge_status
 				view.invalidate
 			end
 
@@ -5655,10 +5656,32 @@ module VBO
 					@highlight_face = nil
 					@pick_path = nil
 					@pick_transformation = nil
-					Sketchup::set_status_text("Mode: Object To Shape Forge", SB_VCB_LABEL)
-					Sketchup::set_status_text("Hover a face to preview the profile, then click the face to convert. #{@entities.length} object(s) remaining. Esc to cancel.", SB_PROMPT)
+					update_object_to_forge_status
 					view.invalidate
 				end
+			end
+
+			def update_object_to_forge_status
+				remaining = @entities.length
+				label = "Mode: Object To Shape Forge"
+				prompt = "Hover an end/profile face, then click to convert. Esc to cancel."
+				value = "#{remaining} object(s) remaining"
+
+				if @hover_face && @highlight_face
+					if @hover_face == @highlight_face
+						prompt = "End/Profile Face Ready: Click to convert this object. Esc to cancel."
+						value = "#{remaining} object(s) remaining | Using hovered face as profile"
+					else
+						prompt = "Hovering side face: Click to use the matched end/profile face for conversion. Esc to cancel."
+						value = "#{remaining} object(s) remaining | Mapped to end/profile face"
+					end
+				elsif @hover_face
+					prompt = "Hovering a face: Move to an end/profile face to convert this object. Esc to cancel."
+				end
+
+				Sketchup::set_status_text(label, SB_VCB_LABEL)
+				Sketchup::set_status_text(prompt, SB_PROMPT)
+				Sketchup::set_status_text(value, SB_VCB_VALUE)
 			end
 
 			def pick_face_for_object_to_forge(x, y, view)
