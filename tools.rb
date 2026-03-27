@@ -5807,19 +5807,34 @@ module VBO
 				opposite_edges_set = Set.new(opposite_face.edges)
 				longitudinal_chains = []
 				blocked_edges = profile_edges_set | opposite_edges_set
-				target_vertices = opposite_face.loops.flat_map(&:vertices).uniq
-				start_vertices = profile_face.loops.flat_map(&:vertices).uniq
+				loop_pairs = pair_face_loops(profile_face, opposite_face)
 
-				start_vertices.each do |start_vertex|
-					vertex_path = shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
-					next unless vertex_path && vertex_path.length >= 2
-					longitudinal_chains << vertex_path.map { |vertex| vertex.position.transform(trans) }
+				loop_pairs.each do |profile_loop, opposite_loop|
+					start_vertices = profile_loop.vertices
+					target_vertices = aligned_target_vertices(profile_loop, opposite_loop, trans)
+					start_vertices.each_with_index do |start_vertex, index|
+						target_vertex = target_vertices[index]
+						next unless target_vertex
+						vertex_path = shortest_vertex_path(start_vertex, [target_vertex], blocked_edges)
+						next unless vertex_path && vertex_path.length >= 2
+						longitudinal_chains << vertex_path.map { |vertex| vertex.position.transform(trans) }
+					end
+				end
+
+				if longitudinal_chains.empty?
+					start_vertices = profile_face.loops.flat_map(&:vertices).uniq
+					target_vertices = opposite_face.loops.flat_map(&:vertices).uniq
+					start_vertices.each do |start_vertex|
+						vertex_path = shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
+						next unless vertex_path && vertex_path.length >= 2
+						longitudinal_chains << vertex_path.map { |vertex| vertex.position.transform(trans) }
+					end
 				end
 
 				if longitudinal_chains.empty?
 					[center, face_center_world(opposite_face, trans)]
 				else
-					sample_count = [[longitudinal_chains.map(&:length).max, 2].max, 24].min
+					sample_count = [[longitudinal_chains.map(&:length).max, 2].max, 48].min
 					resampled_chains = longitudinal_chains.map { |chain| resample_polyline(chain, sample_count) }
 					chain_points = []
 					sample_count.times do |index|
@@ -5835,6 +5850,46 @@ module VBO
 					chain_points[-1] = face_center_world(opposite_face, trans) if chain_points[-1]
 					chain_points.length >= 2 ? chain_points : [center, face_center_world(opposite_face, trans)]
 				end
+			end
+
+			def pair_face_loops(profile_face, opposite_face)
+				profile_loops = profile_face.loops.sort_by { |loop| [loop.outer? ? 0 : 1, -loop.vertices.length] }
+				opposite_loops = opposite_face.loops.sort_by { |loop| [loop.outer? ? 0 : 1, -loop.vertices.length] }
+				profile_loops.zip(opposite_loops).select { |a, b| a && b && a.vertices.length == b.vertices.length }
+			end
+
+			def aligned_target_vertices(profile_loop, opposite_loop, trans)
+				profile_vertices = profile_loop.vertices
+				opposite_vertices = opposite_loop.vertices
+				return opposite_vertices if profile_vertices.empty? || opposite_vertices.empty?
+
+				profile_center = Geom::Point3d.new(profile_vertices.map { |v| v.position.x }.sum / profile_vertices.length.to_f,
+					profile_vertices.map { |v| v.position.y }.sum / profile_vertices.length.to_f,
+					profile_vertices.map { |v| v.position.z }.sum / profile_vertices.length.to_f).transform(trans)
+				opposite_center = Geom::Point3d.new(opposite_vertices.map { |v| v.position.x }.sum / opposite_vertices.length.to_f,
+					opposite_vertices.map { |v| v.position.y }.sum / opposite_vertices.length.to_f,
+					opposite_vertices.map { |v| v.position.z }.sum / opposite_vertices.length.to_f).transform(trans)
+
+				profile_seed = profile_vertices.first.position.transform(trans)
+				profile_vector = profile_center.vector_to(profile_seed)
+				best_offset = 0
+				best_score = Float::INFINITY
+
+				opposite_vertices.length.times do |offset|
+					candidate_vertex = opposite_vertices[offset].position.transform(trans)
+					candidate_vector = opposite_center.vector_to(candidate_vertex)
+					score = if profile_vector.valid? && candidate_vector.valid?
+						profile_vector.angle_between(candidate_vector)
+					else
+						profile_seed.distance(candidate_vertex)
+					end
+					if score < best_score
+						best_score = score
+						best_offset = offset
+					end
+				end
+
+				opposite_vertices.rotate(best_offset)
 			end
 
 			def shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
