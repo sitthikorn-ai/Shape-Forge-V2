@@ -5846,6 +5846,7 @@ module VBO
 						chain_points << Geom::Point3d.new(sum[0] / pts.length, sum[1] / pts.length, sum[2] / pts.length)
 					end
 					chain_points = chain_points.uniq { |pt| [pt.x.round(6), pt.y.round(6), pt.z.round(6)] }
+					chain_points = simplify_centerline(chain_points)
 					chain_points[0] = center if chain_points[0]
 					chain_points[-1] = face_center_world(opposite_face, trans) if chain_points[-1]
 					chain_points.length >= 2 ? chain_points : [center, face_center_world(opposite_face, trans)]
@@ -5863,33 +5864,28 @@ module VBO
 				opposite_vertices = opposite_loop.vertices
 				return opposite_vertices if profile_vertices.empty? || opposite_vertices.empty?
 
-				profile_center = Geom::Point3d.new(profile_vertices.map { |v| v.position.x }.sum / profile_vertices.length.to_f,
-					profile_vertices.map { |v| v.position.y }.sum / profile_vertices.length.to_f,
-					profile_vertices.map { |v| v.position.z }.sum / profile_vertices.length.to_f).transform(trans)
-				opposite_center = Geom::Point3d.new(opposite_vertices.map { |v| v.position.x }.sum / opposite_vertices.length.to_f,
-					opposite_vertices.map { |v| v.position.y }.sum / opposite_vertices.length.to_f,
-					opposite_vertices.map { |v| v.position.z }.sum / opposite_vertices.length.to_f).transform(trans)
-
-				profile_seed = profile_vertices.first.position.transform(trans)
-				profile_vector = profile_center.vector_to(profile_seed)
-				best_offset = 0
+				profile_world = profile_vertices.map { |v| v.position.transform(trans) }
+				opposite_world = opposite_vertices.map { |v| v.position.transform(trans) }
+				candidates = [opposite_vertices, opposite_vertices.reverse]
+				best_vertices = opposite_vertices
 				best_score = Float::INFINITY
 
-				opposite_vertices.length.times do |offset|
-					candidate_vertex = opposite_vertices[offset].position.transform(trans)
-					candidate_vector = opposite_center.vector_to(candidate_vertex)
-					score = if profile_vector.valid? && candidate_vector.valid?
-						profile_vector.angle_between(candidate_vector)
-					else
-						profile_seed.distance(candidate_vertex)
-					end
-					if score < best_score
-						best_score = score
-						best_offset = offset
+				candidates.each do |candidate_vertices|
+					candidate_world = candidate_vertices.map { |v| v.position.transform(trans) }
+					candidate_vertices.length.times do |offset|
+						rotated_vertices = candidate_vertices.rotate(offset)
+						rotated_world = candidate_world.rotate(offset)
+						score = profile_world.each_with_index.reduce(0.0) { |sum, (pt, index)|
+							sum + pt.distance(rotated_world[index])
+						}
+						if score < best_score
+							best_score = score
+							best_vertices = rotated_vertices
+						end
 					end
 				end
 
-				opposite_vertices.rotate(best_offset)
+				best_vertices
 			end
 
 			def shortest_vertex_path(start_vertex, target_vertices, blocked_edges)
@@ -5961,6 +5957,26 @@ module VBO
 				return Array.new(sample_count, points.first) if total <= 0.0
 				step = total / (sample_count - 1).to_f
 				Array.new(sample_count) { |index| point_on_polyline(points, step * index) }
+			end
+
+			def simplify_centerline(points, merge_tolerance = 1.mm, angle_tolerance = 2.degrees)
+				return points if points.length < 3
+				simplified = [points.first]
+				points[1..-2].each_with_index do |point, index|
+					prev = simplified[-1]
+					next_pt = points[index + 2]
+					if prev.distance(point) <= merge_tolerance
+						next
+					end
+					vec1 = prev.vector_to(point)
+					vec2 = point.vector_to(next_pt)
+					if vec1.valid? && vec2.valid? && vec1.angle_between(vec2) <= angle_tolerance
+						next
+					end
+					simplified << point
+				end
+				simplified << points.last unless simplified.last == points.last
+				simplified
 			end
 
 			def fallback_chain_points(entity, profile_face, trans)
