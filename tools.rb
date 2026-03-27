@@ -5728,6 +5728,21 @@ module VBO
 				Geom::Point3d.new(sum[0] / pts.length, sum[1] / pts.length, sum[2] / pts.length).transform(trans)
 			end
 
+			def face_signature(face)
+				loop_sizes = face.loops.map { |loop|
+					[
+						loop.outer? ? 1 : 0,
+						loop.vertices.length
+					]
+				}.sort
+				{
+					loops: face.loops.length,
+					outer_vertices: face.outer_loop.vertices.length,
+					total_vertices: face.vertices.length,
+					loop_sizes: loop_sizes
+				}
+			end
+
 			def profile_faces_for_entity(entity, trans)
 				faces = entity.definition.entities.grep(Sketchup::Face)
 				candidates = faces.map { |face|
@@ -5760,19 +5775,17 @@ module VBO
 			end
 
 			def find_opposite_face(entity, profile_face, trans)
-				world_normal = profile_face.normal.transform(trans)
 				profile_center = face_center_world(profile_face, trans)
 				tolerance = 0.1
 				profile_area = profile_face.area
-				profile_vertex_count = profile_face.vertices.length
+				profile_signature = face_signature(profile_face)
 
 				entity.definition.entities.grep(Sketchup::Face)
 					.reject { |candidate| candidate == profile_face }
 					.select { |candidate|
-						candidate_normal = candidate.normal.transform(trans)
-						candidate_normal.parallel?(world_normal) &&
-							(candidate.area - profile_area).abs <= tolerance &&
-							candidate.vertices.length == profile_vertex_count &&
+						candidate_signature = face_signature(candidate)
+						(candidate.area - profile_area).abs <= tolerance &&
+							candidate_signature == profile_signature &&
 							candidate.edges.none? { |edge| profile_face.edges.include?(edge) }
 					}
 					.max_by { |candidate|
